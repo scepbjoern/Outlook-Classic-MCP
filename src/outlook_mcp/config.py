@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -113,7 +114,9 @@ def parse_tool_policy(raw: str) -> ToolPolicy:
     """Parse and validate the complete configuration, rejecting unknown fields."""
     try:
         data = json.loads(raw, object_pairs_hook=_unique_keys)
-    except (json.JSONDecodeError, UnicodeError) as exc:
+    except ToolConfigError:
+        raise
+    except (ValueError, RecursionError) as exc:
         raise ToolConfigError(f"Invalid JSON configuration: {exc}") from exc
     root = _object(data, "config", {"version", "tools"})
     version = root.get("version", 1)
@@ -137,6 +140,25 @@ def parse_tool_policy(raw: str) -> ToolPolicy:
     )
 
 
+def _missing_default(path: Path) -> bool:
+    """Accept missing components only below a usable directory.
+
+    exists()/is_symlink() can hide filesystem errors. lstat() also
+    distinguishes a dangling link from a genuinely absent policy.
+    """
+    for candidate in (path, *path.parents):
+        try:
+            candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if candidate == path:
+            return False
+        if not stat.S_ISDIR(candidate.stat().st_mode):
+            raise ToolConfigError(f"Config parent is not a directory: {candidate}")
+        return True
+    raise ToolConfigError(f"Cannot locate a directory for tool config at {path}")
+
+
 def load_tool_policy() -> ToolPolicy:
     """Load optional user config or fail closed on explicit/broken config.
 
@@ -147,10 +169,13 @@ def load_tool_policy() -> ToolPolicy:
     override = os.environ.get("OUTLOOK_MCP_CONFIG")
     if override is not None and not override.strip():
         raise ToolConfigError("OUTLOOK_MCP_CONFIG cannot be empty")
-    path = Path(override).expanduser() if override is not None else default_config_path()
-    if override is None and not path.exists() and not path.is_symlink():
-        return ToolPolicy()
     try:
+        path = Path(override).expanduser() if override is not None else default_config_path()
+    except RuntimeError as exc:
+        raise ToolConfigError(f"Cannot resolve tool config path: {exc}") from exc
+    try:
+        if override is None and _missing_default(path):
+            return ToolPolicy()
         with path.open("rb") as stream:
             raw = stream.read(MAX_CONFIG_BYTES + 1)
     except OSError as exc:

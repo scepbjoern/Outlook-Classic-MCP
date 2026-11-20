@@ -71,6 +71,15 @@ def test_deny_wins_and_allowlists_intersect():
     assert _tool_names(parse_tool_policy('{"tools":{"enabled_tools":[]}}')) == set()
 
 
+@pytest.mark.parametrize("rules", [
+    {"enabled_tools": ["outlook_delete_mail"], "disabled_groups": ["mail"]},
+    {"enabled_groups": ["mail"], "enabled_tools": ["outlook_list_events"]},
+    {"enabled_tools": ["outlook_delete_mail"], "disabled_tools": ["outlook_delete_mail"]},
+])
+def test_conflicting_rules_leave_no_tools(rules):
+    assert _tool_names(parse_tool_policy(json.dumps({"tools": rules}))) == set()
+
+
 @pytest.mark.parametrize("raw", [
     "not json", "[]", "null", "{", '{"version":true}', '{"version":2}',
     '{"tools":null}', '{"unknown":true}', '{"tools":{"disabled_tool":[]}}',
@@ -135,6 +144,7 @@ def test_decorator_must_be_in_inventory():
     with pytest.raises(ToolConfigError):
         registrar.tool()
 
+
 def test_invalid_config_prevents_server_construction(monkeypatch, tmp_path):
     path = tmp_path / "synthetic.json"
     path.write_text('{"tools":{"disabled_tool":["outlook_delete_mail"]}}', encoding="utf-8")
@@ -151,3 +161,27 @@ def test_malformed_default_config_is_not_ignored(monkeypatch):
     path.write_text('{"tools":{"disabled_groups":["typo"]}}', encoding="utf-8")
     with pytest.raises(ToolConfigError):
         load_tool_policy()
+
+
+def test_unusable_default_directory_fails_closed():
+    from outlook_mcp.config import default_config_path
+
+    default_config_path().parent.touch()
+    with pytest.raises(ToolConfigError):
+        load_tool_policy()
+
+
+def test_default_path_permission_error_fails_closed(monkeypatch):
+    from pathlib import Path
+
+    def deny_access(path):
+        raise PermissionError("synthetic access denied")
+
+    monkeypatch.setattr(Path, "lstat", deny_access)
+    with pytest.raises(ToolConfigError, match="Cannot read"):
+        load_tool_policy()
+
+
+def test_json_decoder_limits_are_config_errors():
+    with pytest.raises(ToolConfigError, match="Invalid JSON"):
+        parse_tool_policy("[" * 2000 + "]" * 2000)

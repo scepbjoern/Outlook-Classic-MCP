@@ -12,15 +12,14 @@ from outlook_mcp.ui import register_ui
 INSTRUCTIONS = """\
 This MCP server provides configurable access to Microsoft Outlook desktop on
 Windows via COM automation. Depending on the local tool policy, it can read
-and send mail and manage calendar events, contacts, tasks, categories, rules,
-and check
-Out-of-Office status.
+and send mail, manage calendar events, contacts, tasks, categories and rules,
+and check Out-of-Office status.
 
 Authentication piggybacks on whatever account Outlook is signed into —
 no Microsoft Graph API, no Entra app registration, no OAuth tokens.
 
 PREREQUISITE: classic Outlook (OUTLOOK.EXE) must be installed. The
-server auto-launches Outlook on first call; the new "modern" Outlook
+server attaches to Outlook at startup and can launch it; the new "modern" Outlook
 (olk.exe) is NOT supported.
 
 Only use tools advertised by this server; the local config may disable tools.

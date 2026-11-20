@@ -22,8 +22,9 @@ outlook-mcp
 ```
 
 For MCP clients that launch the server, configure the variable in the client's
-server environment. Restart/reconnect after changes; settings are loaded once
-at startup, and clients may cache tool descriptions.
+server environment. Restart the server process after editing the file. Reconnect
+the client and request `tools/list` again to refresh its cached tool descriptions.
+The running server keeps the policy it loaded at startup.
 
 **Fail-closed startup:** An explicitly configured path that is missing,
 unreadable or empty causes an error and process exit code 2. Any existing but
@@ -81,8 +82,8 @@ discovery:
 ```
 
 Supported groups: `mail`, `folders`, `calendar`, `contacts`, `tasks`,
-`categories`, `rules`, `out_of_office`, `account`. Exact `outlook_*`
-tool names appear in the [README Tools table](../README.md#tools). The
+`categories`, `rules`, `out_of_office`, `account`. Prefix the names in
+the [README Tools table](../README.md#tools) with `outlook_` when using them in a policy. The
 authoritative tool inventory is `src/outlook_mcp/config.py`. If you add a tool
 to the source code, add it to that inventory and update the registration tests;
 an unlisted tool decorator otherwise rejects registration.
@@ -104,6 +105,10 @@ and [issue #3](https://github.com/scepbjoern/Outlook-Classic-MCP/issues/3).
 Allowed tool outputs may also be transmitted to the MCP client or its LLM
 provider; running the COM bridge locally does not prevent that.
 
-Store personal policies in an untracked location, with appropriate filesystem
-permissions. Never commit personal mailbox names, customer identities,
-credentials or secrets into an example configuration.
+Whoever can edit, replace or remove the policy or change the server environment
+can change the tool set at the next startup. For a mandatory policy, set
+`OUTLOOK_MCP_CONFIG` explicitly so a missing file stops startup. Protect the
+file, its parent directory and the client's launch settings with local filesystem
+permissions. Store personal policies in an untracked location. Never commit
+personal mailbox names, customer identities, credentials or secrets into an
+example configuration.
