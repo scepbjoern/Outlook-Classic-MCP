@@ -2,7 +2,7 @@
 
 The server runs in the Windows user session that has classic Outlook and the intended profile. A compatible MCP host starts the installed fork as a child process and exchanges MCP messages over standard input and output (STDIO). A client on another device can use this path only if its execution host actually runs the process in that Windows session.
 
-Use the absolute Python executable from the environment containing this fork, arguments `-m` and `outlook_mcp`, and set `OUTLOOK_MCP_CONFIG` to the absolute path of the prepared local policy in that process's environment. The example paths below are fictional. Create the policy before connecting. An explicitly selected missing or invalid policy stops startup. A missing default policy can expose all tools.
+Install the reviewed commit of this fork. Use the absolute Python executable from that installation, arguments `-m` and `outlook_mcp`, and set `OUTLOOK_MCP_CONFIG` to the absolute path of the prepared local policy in that process's environment. The example paths below are fictional. Create the policy before connecting. An explicitly selected missing or invalid policy stops startup. A missing default policy can expose all tools.
 
 | Client / execution environment | How to connect and where results go |
 | --- | --- |

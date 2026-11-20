@@ -141,7 +141,11 @@ def test_read_only_calendar_walkthrough_then_create(tmp_path):
                 "start": "2026-11-24T10:00:00+01:00", "end": "2026-11-24T10:30:00+01:00",
                 "sensitivity": 2, "reminder_minutes": 15,
             })
-            assert not result.isError and json.loads(result.content[0].text) == {"status": "created"}
+            assert not result.isError
+            receipt = json.loads(result.content[0].text)
+            assert receipt["status"] == "created"
+            assert {"entry_id", "subject", "store_id", "start", "end", "busy_status"}.isdisjoint(receipt)
+            assert "Focus block" not in result.model_dump_json()
 
     asyncio.run(exercise())
 
