@@ -178,8 +178,7 @@ async function doAction(act, m) {
       await MCPApp.callTool("outlook_delete_mail", { store_id: m.store_id, entry_id: m.entry_id });
       items = items.filter(x => x !== m);
       if (selectedId === m.entry_id) closePane();
-      MCPApp.updateModelContext("User deleted the mail “" + (m.subject || "(no subject)") +
-        "” from " + (m.from || "unknown sender") + " via the inbox view.");
+      MCPApp.updateModelContext("User deleted the mail via the inbox view.");
     }
     renderList();
   } catch (e) {

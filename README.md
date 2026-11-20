@@ -293,6 +293,9 @@ the Outlook process stays warm across calls.
 
 ## Development
 
+See [security development and verification](SECURITY.md) for the locked CI checks
+and the separate manual procedure for an isolated synthetic Outlook profile.
+
 ```bat
 .venv\Scripts\activate
 pip install -e .[dev]

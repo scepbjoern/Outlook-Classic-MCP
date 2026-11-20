@@ -19,7 +19,8 @@ def test_attachment_rejects_relative():
         validate_attachment_path("just/a/relative.txt")
 
 
-def test_attachment_rejects_missing(tmp_path):
+def test_attachment_rejects_missing(monkeypatch, tmp_path):
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     missing = tmp_path / "nope.txt"
     with pytest.raises(OutlookError, match="not found"):
         validate_attachment_path(str(missing))

@@ -25,7 +25,7 @@ classifiers = [
   "Topic :: Office/Business",
 ]
 dependencies = [
-  "mcp<=1.29",  # capped to mcp less than 1.29 raised by the issue identified by @DanoPTT thanks for raising this issue. migration to mcp 2.0 is a new pending issue.
+  "mcp==1.30.0",  # Reviewed 1.x SDK for both STDIO discovery and direct calls.
   "pydantic>=2.6",
   "pywin32>=306; sys_platform == 'win32'",
 ]
@@ -48,3 +48,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff.lint]
+# Repository-wide whitespace, invalid code, unsafe evaluation, loaders and shell use.
+select = ["E101", "W191", "W291", "W292", "W293", "E9", "F63", "F7", "F82", "S102", "S307", "S506", "S602", "S608"]
