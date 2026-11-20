@@ -14,6 +14,11 @@ AccountSelector = Annotated[str | None, Field(
 StoreSelector = Annotated[str | None, Field(
     description="Outlook StoreID from outlook_whoami or an item result. Must agree with account if both are supplied.",
 )]
+EventSensitivity = Annotated[int, Field(
+    strict=True, ge=0, le=3,
+    description="Native Outlook sensitivity (0=Normal, 1=Personal, 2=Private, 3=Confidential). "
+                "Omit to keep the Outlook default on create or the current value on update.",
+)]
 
 
 class ResponseFormat(str, Enum):

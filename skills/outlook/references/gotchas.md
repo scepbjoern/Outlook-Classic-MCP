@@ -71,7 +71,7 @@ Moving an item with `outlook_move_mail` returns a `new_entry_id`. The original `
 
 ## "Schedule it daily for the next 6 months" — and then they want to change cadence
 
-`outlook_update_event` cannot modify the recurrence pattern. It only rewrites scalar fields (subject, start, end, location, body).
+`outlook_update_event` cannot modify the recurrence pattern. It only rewrites scalar fields (subject, start, end, location, body, sensitivity).
 
 **Fix**: to change cadence (or end date or interval), delete the event and recreate it with the new `recurrence` object. If it has attendees, this means a cancellation + a new invite — warn the user.
 

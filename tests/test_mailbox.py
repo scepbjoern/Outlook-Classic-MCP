@@ -38,6 +38,7 @@ def make_profile(names=("a", "b")):
         event.Subject = name
         event.Body = ""
         event.Categories = ""
+        event.Sensitivity = 0
         event.ReminderMinutesBeforeStart = 15
         event.Location = ""
         event.Organizer = ""

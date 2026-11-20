@@ -84,6 +84,25 @@ def test_registered_tool_rejects_forbidden_store_over_stdio(tmp_path):
     asyncio.run(exercise())
 
 
+def test_calendar_sensitivity_schema_and_validation_over_stdio(tmp_path):
+    async def exercise():
+        async with session_at(tmp_path) as session:
+            schemas = {tool.name: tool.inputSchema for tool in (await session.list_tools()).tools}
+            for name, args in [
+                ("outlook_create_event", {"subject": "Synthetic", "start": "2026-11-23", "end": "2026-11-24"}),
+                ("outlook_update_event", {"entry_id": "event-b"}),
+            ]:
+                schema = schemas[name]
+                field = schema["properties"]["sensitivity"]
+                assert "sensitivity" not in schema["required"]
+                assert (field["type"], field["minimum"], field["maximum"]) == ("integer", 0, 3)
+                result = await session.call_tool(name, {**args, "sensitivity": True})
+                assert result.isError and "sensitivity" in result.content[0].text
+            assert (tmp_path / "bridge.log").read_text(encoding="utf-8").splitlines() == ["constructed"]
+
+    asyncio.run(exercise())
+
+
 @pytest.mark.parametrize("contents", [
     None, '{"tools":{"disabled_tool":[]}}', '{"version":2,"accounts":{"write":true}}',
 ], ids=["missing", "invalid", "invalid-account-policy"])

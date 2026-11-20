@@ -96,7 +96,9 @@ Confirm before calling (these change shared state or send messages):
 `send_mail`, `reply_mail`, `forward_mail`, `delete_mail`, `move_mail`, `mark_mail`, `save_attachments`, `create_event` (especially with attendees — that sends a meeting invite immediately), `update_event`, `delete_event`, `respond_event` (with `send_response=true`), `create_folder`, `create_task`, `complete_task`, `set_category`, `toggle_rule`.
 
 For `outlook_create_event`, show the target calendar, subject, start and end
-with time zone, reminder, and any location or notes. Say whether it is a
+with time zone, reminder, and any location or notes. Include the name and
+number of any explicitly requested `sensitivity` in the create or update
+preview, including Normal (0). Say whether the proposed new event is a
 one-time appointment or a series and who will receive invitations. For a
 personal one-time appointment, omit `attendees` and `recurrence`.
 Ask “May I create this event as shown?” in the user's language. Use the

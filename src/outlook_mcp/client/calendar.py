@@ -33,8 +33,15 @@ _RECURRENCE_TYPE_MAP = {
     "yearly": OL_RECURS_YEARLY,
 }
 
+_SENSITIVITY_LABELS = {0: "Normal", 1: "Personal", 2: "Private", 3: "Confidential"}
+
 # PidTagStoreEntryId identifies the message store containing the item.
 _PR_STORE_ENTRYID = "http://schemas.microsoft.com/mapi/proptag/0x0FFB0102"
+
+
+def _validate_sensitivity(value: int | None) -> None:
+    if value is not None and (type(value) is not int or value not in _SENSITIVITY_LABELS):
+        raise OutlookError("sensitivity must be an integer from 0 (Normal) to 3 (Confidential).")
 
 
 def _require_listed_event_store(ev: Any, mailbox: Mailbox, namespace: Any) -> None:
@@ -63,6 +70,7 @@ def _require_listed_event_store(ev: Any, mailbox: Mailbox, namespace: Any) -> No
 
 def _event_summary(ev: Any) -> dict[str, Any]:
     recur_state = _safe_get(ev, "RecurrenceState", 0)
+    sensitivity = _safe_get(ev, "Sensitivity")
     return {
         "entry_id": _safe_get(ev, "EntryID"),
         "subject": _safe_get(ev, "Subject", ""),
@@ -70,6 +78,8 @@ def _event_summary(ev: Any) -> dict[str, Any]:
         "end": to_iso(_safe_get(ev, "End")),
         "location": _safe_get(ev, "Location", ""),
         "organizer": _safe_get(ev, "Organizer", ""),
+        "sensitivity": sensitivity,
+        "sensitivity_label": _SENSITIVITY_LABELS.get(sensitivity, "Unknown"),
         "is_recurring": bool(recur_state),
         "all_day": bool(_safe_get(ev, "AllDayEvent", False)),
         "preview": truncate(_safe_get(ev, "Body", ""), 200),
@@ -169,7 +179,9 @@ def create_event(
     is_online_meeting: bool = False,
     reminder_minutes: int | None = 15,
     recurrence: Recurrence | None = None,
+    sensitivity: int | None = None,
 ) -> dict[str, Any]:
+    _validate_sensitivity(sensitivity)
     mailbox.require_smtp_recipients(attendees or [])
     start_time = to_com(from_iso(start))
     end_time = to_com(from_iso(end))
@@ -198,6 +210,8 @@ def create_event(
             raise OutlookError("Outlook could not resolve all meeting attendees.")
     if recurrence is not None:
         _apply_recurrence(appt, recurrence)
+    if sensitivity is not None:
+        appt.Sensitivity = sensitivity
     appt.Save()
     result = {
         "status": "created",
@@ -223,7 +237,9 @@ def update_event(
     end: str | None = None,
     location: str | None = None,
     body: str | None = None,
+    sensitivity: int | None = None,
 ) -> dict[str, Any]:
+    _validate_sensitivity(sensitivity)
     ev = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_APPOINTMENT)
     start_time = to_com(from_iso(start))
     end_time = to_com(from_iso(end))
@@ -237,6 +253,8 @@ def update_event(
         ev.Location = location
     if body is not None:
         ev.Body = body
+    if sensitivity is not None:
+        ev.Sensitivity = sensitivity
     ev.Save()
     return {"status": "updated", "entry_id": entry_id, "store_id": mailbox.store_id}
 
