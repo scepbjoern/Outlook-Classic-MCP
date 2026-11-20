@@ -3,7 +3,7 @@
 # outlook-classic-mcp
 | | |
 | :--- | :--- |
-| [![Outlook Classic MCP server](https://mcprush.com/badge/outlook-classic-mcp/card.svg)](https://mcprush.com/to/outlook-classic-mcp?ref=badge) | A local **MCP (Model Context Protocol) server** that exposes the **classic Outlook desktop client** — mail, folders, calendar, contacts, tasks, color categories, mail rules, and Out-of-Office status — to any MCP-aware agent: Claude Code, Claude Desktop, Cowork, GitHub Copilot / VS Code agent mode, Cursor, Cline, Continue, Windsurf, and anything else that speaks MCP. |
+| [![Outlook Classic MCP server](https://mcprush.com/badge/outlook-classic-mcp/card.svg)](https://mcprush.com/to/outlook-classic-mcp?ref=badge) | A local **MCP (Model Context Protocol) server** that exposes the **classic Outlook desktop client** — mail, folders, calendar, contacts, tasks, color categories, mail rules, and Out-of-Office status — to an MCP client that can launch the server in the Windows user session. See the [client guide](skills/outlook/references/setup.md) for OpenCode, OpenClaw, local desktop clients and hosted ChatGPT. |
 
 
 
@@ -246,21 +246,11 @@ app. To preview the views without an MCP host:
 
 ## Agent skill
 
-The repo also ships an agent **skill** at `skills/outlook/` (standard Agent Skills format — works in Claude Code, Cowork, Copilot, Cursor, and other agents that load skills) — a self-contained operational reference that teaches the agent how to drive the `outlook_*` tools correctly: folder reference syntax, the `EntryID` handle pattern, ISO-8601 date conventions, the `Recurrence` object, which calls have side effects to confirm before, and 19 worked recipes for common workflows (triage, drafting replies, weekly digests, scheduling meetings, recurring events, attachment handling, multi-mailbox setups).
+The bundled [Outlook skill](skills/outlook/SKILL.md) uses the tools advertised by the active connection and the rights on the selected store. In clients that load Agent Skills, make the entire `skills/outlook/` directory available. Other clients can use the same walkthrough directly.
 
-Layout:
-
-```
-skills/outlook/
-├── SKILL.md                  # always-loaded operational core
-└── references/               # loaded on demand
-    ├── tools.md              # full per-tool parameter / return-shape reference
-    ├── recipes.md            # worked multi-step workflows
-    ├── gotchas.md            # quirks + failure modes (Programmatic Access prompt, EX:/O= addresses, live rule toggling, sandboxed paths, etc.)
-    └── setup.md              # install instructions an agent can walk a user through when the tools aren't connected yet
-```
-
-Installing the [plugin](#option-1--agent-plugin-recommended) auto-loads this skill alongside the MCP server. For an agent that supports skills but not plugins, copy the `skills/outlook/` directory into wherever it loads skills from.
+- [Connect a local STDIO client](skills/outlook/references/setup.md) and check where its model processes Outlook results.
+- [Try a read-only calendar, then approve one appointment](skills/outlook/references/calendar-workflow.md). The examples cover native privacy, Free/Busy limits and untracked, store-specific aliases.
+- [Tool reference](skills/outlook/references/tools.md) and [worked recipes](skills/outlook/references/recipes.md) for other Outlook operations.
 
 ---
 

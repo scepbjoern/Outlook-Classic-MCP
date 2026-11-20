@@ -27,6 +27,17 @@ def appointment(ns):
     return event
 
 
+@pytest.mark.parametrize("sensitivity", [0, 1, 3])
+def test_busy_only_can_disclose_nonprivate_calendar_previews(sensitivity):
+    ns = make_profile()
+    event = appointment(ns)
+    event.Sensitivity = sensitivity
+    result = registered(ns, write=())("list_events", **WINDOW, **SELECT)
+    row, = result["items"]
+    assert row["sensitivity"] == sensitivity
+    assert row["preview"] == event.Body and row["subject"] == event.Subject
+
+
 @pytest.mark.parametrize("raw", ["{}", '{"version":1}', '{"version":2,"accounts":{}}'])
 def test_legacy_default(raw):
     assert parse_tool_policy(raw).calendar_privacy.for_account("a@example.test") == PrivacyMode.BUSY_ONLY

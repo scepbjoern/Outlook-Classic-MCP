@@ -1,192 +1,53 @@
-# Setting up the Outlook integration
+# Connect a client to classic Outlook
 
-Read this file when the user wants to use Outlook from Claude (or another MCP-aware agent) but the `outlook_*` tools aren't available in the session yet — meaning the underlying integration isn't installed.
+The server runs in the Windows user session that has classic Outlook and the intended profile. A compatible MCP host starts the installed fork as a child process and exchanges MCP messages over standard input and output (STDIO). A client on another device can use this path only if its execution host actually runs the process in that Windows session.
 
-This file walks an agent through helping the user install **`outlook-classic-mcp`**, the local MCP server that exposes classic Outlook desktop to MCP clients. After install, the user restarts their MCP client (Claude Code, Claude Desktop, Cowork, VS Code / Copilot agent mode, Cursor, Cline, Continue, Windsurf, or any other MCP-aware agent) and the `outlook_*` tools will appear.
+Use the absolute Python executable from the environment containing this fork, arguments `-m` and `outlook_mcp`, and set `OUTLOOK_MCP_CONFIG` to the absolute path of the prepared local policy in that process's environment. The example paths below are fictional. Create the policy before connecting. An explicitly selected missing or invalid policy stops startup. A missing default policy can expose all tools.
 
-## Prerequisites — verify these first
+| Client / execution environment | How to connect and where results go |
+| --- | --- |
+| OpenCode on Windows | Configure a local MCP server with an executable-and-arguments array. OpenCode can include results in requests to the selected model provider. [OpenCode MCP](https://opencode.ai/docs/mcp-servers/) |
+| Codex or ChatGPT desktop with local MCP settings | Use the Windows execution environment and the STDIO command, arguments and environment above. Codex supports a per-tool human prompt. Returned data can reach OpenAI or the configured provider. [Local MCP settings and approvals](https://learn.chatgpt.com/docs/extend/mcp) |
+| VS Code with a local MCP host | Use the user MCP configuration, a named entry under `servers`, `type: "stdio"`, `command`, `args` and `env`. In a remote workspace verify where the server runs. Copilot or another selected model can receive tool results. [VS Code MCP servers](https://code.visualstudio.com/docs/agent-customization/mcp-servers) |
+| OpenClaw with a compatible Windows Gateway | In a Gateway version supporting local MCP servers, use `mcp.servers.outlook` with `transport: "stdio"`, `command`, `args` and `env`. The Gateway must be able to start the process in the Outlook user session. A Linux/WSL or remote Gateway alone cannot access Windows Outlook COM. The configured agent/model and any channel receiving the answer form part of the disclosure boundary. [OpenClaw MCP](https://docs.openclaw.ai/tools/mcp) · [Transport fields](https://docs.openclaw.ai/cli/mcp/transports) |
+| Hosted ChatGPT / cloud-only session | A web chat does not start this process on the user's PC. ChatGPT custom MCP supports remote endpoints and, for eligible setups, Secure MCP Tunnel with a separately configured local client. That route carries requests and results through OpenAI. This project supplies a STDIO server. A tunnel or other remote deployment requires a separate access and privacy decision. [ChatGPT custom MCP](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt) · [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) |
 
-Ask the user to confirm each one. If any answer is no, stop and address that before proceeding; otherwise the install will succeed but the tools won't work.
+### Example for OpenCode
 
-1. **Windows 10 or 11.** macOS and Linux are not supported — there is no Outlook COM API there.
-2. **Classic Outlook desktop is installed** (the `OUTLOOK.EXE` shipped with Microsoft 365 / Office). The "new" Outlook (`olk.exe`) does **not** expose COM and the integration cannot talk to it. Quick test: ask the user to open Outlook; if the title bar shows a "New Outlook" toggle and it's on, ask them to switch it off (toggle to "off" → Outlook restarts as classic).
-3. **Python 3.10 or newer.** If they don't have it, the source-install path below uses `uv` to fetch Python 3.11 automatically — they don't need to install Python separately for that path.
-4. **An Outlook account already signed in.** The integration piggybacks on whatever account Outlook is signed into. There is no separate auth flow, no Microsoft Graph, no Entra app, no OAuth tokens. If Outlook isn't signed in, sign in first.
-
-The user does **not** need to have Outlook open before install; the integration auto-launches Outlook on its first call.
-
-## Install path A — agent plugin (simplest, recommended)
-
-The whole repo ships as a **plugin** (single-plugin marketplace). The format started in Claude Code and is also supported by other agents (Cowork, Copilot, Cursor, etc.) — if the user's agent supports plugins, point its plugin install flow at `anasahmed07/Outlook-Classic-MCP`. Installing the plugin registers both the MCP server *and* this skill in one step. The MCP server itself is fetched and run on demand by `uvx` directly from PyPI ([outlook-classic-mcp](https://pypi.org/project/outlook-classic-mcp/)) — no `pip install`, no `git clone`, no `.venv` to maintain. The slash commands below are Claude Code's; other agents have their own equivalent.
-
-### Prereq: `uv` on PATH
-
-The plugin's MCP server entry uses `uvx`, Astral's zero-install Python launcher. If the user doesn't have `uv` yet, install it once — it's a single command:
-
-PowerShell (recommended on Windows):
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Then **open a fresh terminal** (PATH refresh) before continuing.
-
-Confirm it's there: `uv --version` should print a version.
-
-### Install the plugin
-
-Two slash commands inside Claude Code, in this order:
-
-```text
-/plugin marketplace add anasahmed07/Outlook-Classic-MCP
-/plugin install outlook@outlook-classic-mcp
-```
-
-`anasahmed07/Outlook-Classic-MCP` is the GitHub `owner/repo`. The first command adds the marketplace, the second picks the `outlook` plugin out of it.
-
-Restart Claude Code (`/quit`, then reopen). On first call, `uvx` resolves and caches the package — there's a one-time 5–15 second pause while it installs. Subsequent calls are instant.
-
-Confirm it works: `outlook_whoami` should return the bound mailbox.
-
-### Updating later
-
-```text
-/plugin marketplace update outlook-classic-mcp
-/plugin update outlook@outlook-classic-mcp
-```
-
-To pick up a new MCP server release on PyPI without changing the plugin, `uvx` re-resolves on its own cache TTL. To force a refresh: `uv cache clean outlook-classic-mcp`.
-
-### Manual override: not using uv
-
-If the user can't or won't install uv, edit the plugin's `mcpServers` entry (the file `/plugin list` points at) to use the system Python instead:
+In the user-local `opencode.json`, OpenCode V2 groups named servers under `mcp.servers`. The Windows connection was checked with OpenCode 2.2.7 and a synthetic Outlook bridge. OpenCode V1 expects the same named definition directly under `mcp`. [V1 and V2 configuration](https://opencode.ai/docs/migrate-v1/#mcp-servers)
 
 ```json
-"mcpServers": {
-  "outlook": {
-    "command": "python",
-    "args": ["-m", "outlook_mcp"]
+{
+  "mcp": {
+    "servers": {
+      "outlook": {
+        "type": "local",
+        "command": ["C:/Tools/OutlookMCP/.venv/Scripts/python.exe", "-m", "outlook_mcp"],
+        "environment": {"OUTLOOK_MCP_CONFIG": "C:/MCP-local/policy.json"}
+      }
+    }
   }
 }
 ```
 
-…and have them `pip install outlook-classic-mcp` once. Functionally identical; loses the venv isolation that `uvx` gives you for free.
+### Example for Codex
 
-## Install path B — from PyPI (when plugin install isn't available)
+In the user's `config.toml`, use the installed fork and policy. The per-tool setting below requests interactive approval when the create tool is enabled. Select human review for that call.
 
-For any other MCP client — Cursor, Cline, Continue, Windsurf, Claude Desktop, VS Code / Copilot agent mode, or anywhere else — install the package directly from PyPI using `uv`:
+```toml
+[mcp_servers.outlook]
+command = "C:/Tools/OutlookMCP/.venv/Scripts/python.exe"
+args = ["-m", "outlook_mcp"]
 
-```bat
-uv pip install --system outlook-classic-mcp
-python -m outlook_mcp.scripts.install_to_clients
+[mcp_servers.outlook.env]
+OUTLOOK_MCP_CONFIG = "C:/MCP-local/policy.json"
+
+[mcp_servers.outlook.tools.outlook_create_event]
+approval_mode = "prompt"
 ```
 
-The second command auto-detects which MCP clients are installed and registers the server with the ones the user picks (see "Registering with MCP clients" below). Re-running it is idempotent — it updates existing entries.
+### Discover tools before reading Outlook
 
-`--system` writes to the system Python install so `python -m outlook_mcp` resolves anywhere; drop the flag if the user is installing into an active venv. If they don't have `uv` yet, refer them to path A above for the one-line installer.
+Have the client initialize the STDIO connection and inspect its current tool list (MCP `tools/list`). This is a protocol operation. Use the names and schemas offered by that connection. An absent tool can reflect server policy or a client filter. A skill file, config entry or static MCP App view alone establishes no permissions. A successful listing establishes tool discovery only. It gives no evidence of Outlook sync or freshness.
 
-The package is published at https://pypi.org/project/outlook-classic-mcp/ — `uv pip install` should always succeed on a Windows machine with Python 3.10+.
-
-## Registering with MCP clients
-
-The smart client installer (`scripts/install_to_clients.py`, also reachable as `python -m outlook_mcp.scripts.install_to_clients`) auto-detects which MCP-aware clients are installed on the machine and shows a checkbox menu:
-
-```
-Select which clients to register outlook-mcp with:
-  [ ] 1. Claude Desktop      C:\Users\you\AppData\Roaming\Claude\claude_desktop_config.json
-  [ ] 2. Claude Code         (via `claude` CLI)
-  [ ] 3. Cursor              C:\Users\you\.cursor\mcp.json
-  ...
-
-Type a number to toggle, 'a' to select all, 'n' for none,
-'enter' to confirm, 'q' to quit without changes.
-```
-
-Supported clients: Claude Desktop, Claude Code, Cursor, Cline, Continue, Windsurf. The installer deep-merges the right entry into each config file (and runs `claude mcp add` for Claude Code), snapshotting any existing config to `<file>.bak` first. Re-running it is idempotent — it updates existing entries instead of duplicating.
-
-For clients the installer doesn't know (e.g. VS Code / Copilot agent mode), add the standard stdio entry to the client's MCP config manually:
-
-```json
-"outlook": {
-  "command": "uvx",
-  "args": ["--from", "outlook-classic-mcp", "outlook-mcp"]
-}
-```
-
-(under `mcpServers` in most clients; VS Code's `mcp.json` calls the top-level key `servers`.)
-
-## After install — making the tools appear
-
-The MCP client only loads servers at startup, so the user must:
-
-1. **Quit and reopen the MCP client** (e.g. Claude Desktop). For VS Code-based clients, reload the window or restart the editor.
-2. Start a new conversation (the tool list is per-session in some clients).
-3. The `outlook_*` tools will be available.
-
-You can confirm it worked by calling `outlook_whoami` — it should return the bound mailbox.
-
-## First-call behavior
-
-The very first `outlook_*` call after a fresh install (or after a machine reboot) takes 5–10 seconds while Outlook's COM surface boots. Subsequent calls are fast. **Don't retry** — wait. If the user complains it's slow, this is normal once.
-
-If Outlook isn't running, the integration auto-launches it. On tightly locked-down machines (UAC + group policy blocking COM activation), this may fail; in that case ask the user to open Outlook manually before retrying.
-
-## Optional environment variables
-
-Set these in the MCP client's config (alongside the `command` and `args` for the server) when needed:
-
-- `OUTLOOK_MCP_ALLOW_ANY_PATH=1` — disables the user-profile sandbox on `attachments=` and `output_dir=` parameters. Use only when the user genuinely needs to attach files from / save files to locations outside `C:\Users\<them>\...` (e.g. corporate file shares).
-
-The user must restart the MCP client after changing env vars.
-
-## Troubleshooting tree
-
-Walk the user through these in order when something doesn't work:
-
-### "I installed it but `outlook_*` tools still don't show up."
-
-1. Did they fully quit and reopen the MCP client (not just minimize / new chat)?
-2. Did the install register with the client they're actually using? Re-run `python -m outlook_mcp.scripts.install_to_clients` and confirm the right client is checked.
-3. For Claude Desktop / Cursor / Cline / Continue / Windsurf, ask them to open the MCP config file and confirm an entry like:
-   ```json
-   "outlook": {
-     "command": ".venv/Scripts/python.exe",
-     "args": ["-m", "outlook_mcp"]
-   }
-   ```
-   exists under `mcpServers`. If it doesn't, the registration failed silently — re-run the installer.
-
-### "Outlook COM thread did not become ready."
-
-Outlook didn't auto-launch. Ask the user to:
-
-1. Open Outlook manually and let it finish loading (sign in if prompted).
-2. Restart the MCP client so it re-spawns the integration.
-3. Try a tool call again.
-
-### Send / reply / forward "succeeds" but nothing actually goes out
-
-Outlook's Programmatic Access security is blocking the call. See `gotchas.md` → "*You said you sent it but I don't see it in Sent Items.*" The fix is in Outlook → File → Options → Trust Center → Programmatic Access. On corporate machines IT may need to whitelist the Python interpreter as a trusted publisher.
-
-### "Inspector / debug tool shows ENOENT for the python path."
-
-Known Windows quirk in some MCP debug tooling — the tool mangles backslashes. Tell the user to use forward slashes in the python path (`C:/Users/.../python.exe`) instead of backslashes. Doesn't affect normal usage; only relevant if they're debugging with `npx @modelcontextprotocol/inspector`.
-
-### "I'm on the new Outlook and it doesn't work."
-
-The integration only supports classic Outlook (`OUTLOOK.EXE`). The new Outlook (`olk.exe`) has no COM surface. Tell them:
-
-> Open Outlook → top-right corner → toggle "New Outlook" off. Outlook will restart as classic. Then try again.
-
-### "It worked, but every send pops up a security dialog."
-
-That's Outlook's Programmatic Access guard asking to confirm. Permanently silencing it: Outlook → File → Options → Trust Center → Programmatic Access → "Never warn me about suspicious activity (not recommended)". On a corporate-managed machine, IT policy may prevent this — in which case the user has to click through the dialog each time, or get IT to add the Python interpreter as a trusted publisher.
-
-## What you do not need to do
-
-- **Don't** ask the user for OAuth tokens, Microsoft Graph credentials, or Entra app registrations. None of those are involved.
-- **Don't** ask for SMTP passwords. The integration uses Outlook's own session.
-- **Don't** assume Linux/macOS instructions translate. They don't — this is Windows-only.
-
-## After install completes
-
-Once the tools are available, you don't need this file anymore. Switch back to `tools.md` and `recipes.md` for actual operation, and `gotchas.md` for failure modes.
+After a server-policy edit, end the old server process, reconnect and refresh the client's tool descriptions. For a first read, follow the [calendar walkthrough](calendar-workflow.md). It includes a restrictive policy and the expected disclosures.

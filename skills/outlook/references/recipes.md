@@ -2,6 +2,10 @@
 
 Worked examples for common multi-step Outlook workflows. Each recipe shows the *order of tool calls*, what to extract from each return, and where the user-confirmation moment goes.
 
+Begin each recipe with tool discovery and account selection as described in the [skill](../SKILL.md). In the abbreviated calls below, `store` is the authorized StoreID selected for this request. Confirm the actual target and payload before every write, including saving a draft or attachment. Only retrieve content that the user's request and provider boundary allow.
+
+For a complete read-only calendar policy, redacted results and a client-confirmed write, use the [calendar walkthrough](calendar-workflow.md).
+
 ## Contents
 
 - [1. Triage unread mail](#1-triage-unread-mail)
@@ -22,7 +26,7 @@ Worked examples for common multi-step Outlook workflows. Each recipe shows the *
 - [16. Tag mail with a color category](#16-tag-mail-with-a-color-category)
 - [17. Toggle a mail rule](#17-toggle-a-mail-rule)
 - [18. Confirm OOO status](#18-confirm-ooo-status)
-- [19. Multi-mailbox: act on a shared mailbox](#19-multi-mailbox-act-on-a-shared-mailbox)
+- [19. Select a second mailbox](#19-select-a-second-mailbox)
 
 ---
 
@@ -31,7 +35,7 @@ Worked examples for common multi-step Outlook workflows. Each recipe shows the *
 > "What's unread in my inbox today?"
 
 ```
-1. outlook_list_mails(folder="inbox", unread_only=true, limit=25, response_format="json")
+1. outlook_list_mails(store_id=store, folder="inbox", unread_only=true, limit=25, response_format="json")
 2. Summarize the items for the user (sender, subject, time, preview).
 3. If the user asks to act on one, capture its entry_id and route to recipe 2/4/6.
 ```
@@ -43,17 +47,17 @@ Use `since` if the user wants only today: `since="<today>T00:00:00"`.
 > "Reply to that email from Bob about the Q3 numbers — tell him we'll have it by Friday."
 
 ```
-1. outlook_search_mails(query="Q3", folder="inbox", scope="subject_body",
+1. outlook_search_mails(store_id=store, query="Q3", folder="inbox", scope="subject_body",
                        response_format="json")
 2. Pick the right item by subject/sender. Note its entry_id.
-3. outlook_get_mail(entry_id=<id>, include_body=true, response_format="json")
+3. outlook_get_mail(store_id=store, entry_id=<id>, include_body=true, response_format="json")
    → read the full body so the reply is on-topic.
 4. Draft the reply text yourself, grounded in step 3's body.
 5. Show the draft to the user and ask "send or save to drafts?".
 6. Either:
-     a) outlook_reply_mail(entry_id=<id>, body=<draft>)         # sends
-     b) Recreate as a draft via outlook_send_mail(
-          to=[from_address from step 3], subject="Re: <subject>",
+     a) outlook_reply_mail(store_id=store, entry_id=<id>, body=<draft>)         # sends
+     b) Recreate as a draft via outlook_send_mail(store_id=store,
+          to=[verified sender SMTP address], subject="Re: <subject>",
           body=<draft>, save_only=true)                         # stages
 ```
 
@@ -64,10 +68,10 @@ Why "send or save": `reply_mail` sends immediately. There is no `save_only` flag
 ## 3. Reply-all with an attachment
 
 ```
-1. outlook_search_mails(...) → entry_id
-2. outlook_get_mail(entry_id, include_body=true) → confirm context
+1. outlook_search_mails(store_id=store, ...) → entry_id
+2. outlook_get_mail(store_id=store, entry_id=<id>, include_body=true) → confirm context
 3. Confirm with the user.
-4. outlook_reply_mail(
+4. outlook_reply_mail(store_id=store,
       entry_id=<id>,
       body=<reply text>,
       reply_all=true,
@@ -81,11 +85,11 @@ Attachment paths must be absolute and under the user's profile.
 > "Save the PDF from Sarah's email to my Downloads."
 
 ```
-1. outlook_search_mails(query="<keyword>", scope="from", response_format="json")
+1. outlook_search_mails(store_id=store, query="<keyword>", scope="from", response_format="json")
    or list/search until you have the entry_id.
-2. outlook_get_mail(entry_id, include_body=false, response_format="json")
+2. outlook_get_mail(store_id=store, entry_id=<id>, include_body=false, response_format="json")
    → check the `attachments` array; note indexes.
-3. outlook_save_attachments(
+3. outlook_save_attachments(store_id=store,
       entry_id=<id>,
       output_dir="C:\\Users\\<user>\\Downloads",
       attachment_index=2)         # omit to save all
@@ -100,11 +104,11 @@ Returns absolute paths to the saved files — surface them to the user.
 Two options. The first is faster but only filters; the second searches text content.
 
 ```
-A) outlook_list_mails(folder="inbox", from_address="mira", limit=10,
+A) outlook_list_mails(store_id=store, folder="inbox", from_address="mira", limit=10,
                       response_format="json")
    # substring match on sender — works even when the address is EX:/O=...
 
-B) outlook_search_mails(query="mira offsite", folder="inbox",
+B) outlook_search_mails(store_id=store, query="mira offsite", folder="inbox",
                         scope="subject_body", response_format="json")
    # actually scans subject + body
 ```
@@ -114,8 +118,8 @@ If the user says the magic word "from" they often want option A. Combine: search
 ## 6. Move a thread to a project folder
 
 ```
-1. outlook_search_mails(...) → entry_id
-2. outlook_move_mail(entry_id=<id>, target_folder="Inbox/Projects/Acme")
+1. outlook_search_mails(store_id=store, ...) → entry_id
+2. outlook_move_mail(store_id=store, entry_id=<id>, target_folder="Inbox/Projects/Acme")
 3. Capture new_entry_id from the response if you'll act on the moved item again.
 ```
 
@@ -124,8 +128,8 @@ The `entry_id` you started with is no longer valid after the move; use `new_entr
 ## 7. File a project folder you don't have yet
 
 ```
-1. outlook_list_folders(root="inbox", max_depth=4)  → confirm path doesn't exist
-2. outlook_create_folder(name="Acme", parent="Inbox/Projects")
+1. outlook_list_folders(store_id=store, root="inbox", max_depth=4)  → confirm path doesn't exist
+2. outlook_create_folder(store_id=store, name="Acme", parent="Inbox/Projects")
 3. Now move mails into it (recipe 6).
 ```
 
@@ -136,7 +140,7 @@ The `entry_id` you started with is no longer valid after the move; use `new_entr
 > "What did I get this past week from anyone outside the team?"
 
 ```
-1. outlook_list_mails(
+1. outlook_list_mails(store_id=store,
       folder="inbox",
       since="<today - 7d>T00:00:00",
       until="<today>T23:59:59",
@@ -152,9 +156,9 @@ Don't try to express "outside the team" as a DASL filter — it's much easier to
 ## 9. What's on my calendar this week?
 
 ```
-1. outlook_list_events(
+1. outlook_list_events(store_id=store,
       start="<this Monday>T00:00:00",
-      end="<this Sunday>T23:59:59",
+      end="<following Monday>T00:00:00",
       include_recurrences=true,
       response_format="markdown")
 ```
@@ -163,16 +167,16 @@ Markdown is fine here — the result is the answer. Use `json` if the user is go
 
 ## 10. Schedule a one-off meeting
 
-> "30 minutes with alice@example.com on Tuesday at 2pm to discuss the proposal."
+> "30 minutes with alice@example.test on Tuesday at 2pm to discuss the proposal."
 
 ```
-1. Confirm: "Tuesday May 5 at 2:00–2:30 PM, attendees: alice@example.com,
-   subject: 'Discuss proposal'. Send the invite?"
-2. outlook_create_event(
+1. Show the selected calendar, subject, start/end with zone, 15-minute reminder,
+   one-off scope and intended recipient. Wait for approval to send the invitation.
+2. outlook_create_event(store_id=store,
       subject="Discuss proposal",
       start="2026-05-05T14:00:00",
       end="2026-05-05T14:30:00",
-      attendees=["alice@example.com"],
+      attendees=["alice@example.test"],
       reminder_minutes=15)
 ```
 
@@ -183,11 +187,11 @@ Adding `attendees` makes this a meeting and **sends the invite immediately on su
 > "Weekly 1:1 with my manager Tuesdays at 10am for the rest of the year."
 
 ```
-outlook_create_event(
+outlook_create_event(store_id=store,
    subject="1:1 with <manager>",
    start="2026-05-05T10:00:00",
    end="2026-05-05T10:30:00",
-   attendees=["manager@example.com"],
+   attendees=["manager@example.test"],
    recurrence={
       "type": "weekly",
       "interval": 1,
@@ -200,11 +204,11 @@ If the user prefers a count, use `occurrences` instead of `end_date`. Omit both 
 ## 12. Reschedule an existing event
 
 ```
-1. outlook_list_events(...) → select the occurrence and copy its target fields
+1. outlook_list_events(store_id=store, ...) → select the occurrence and copy its target fields
 2. outlook_get_event(store_id=<store>, entry_id=<id>, scope="occurrence", original_start=<original slot>)
 3. Preview the account, occurrence, old and new times and meeting impact. Wait for approval.
-4. outlook_update_event(
-      store_id=<store>, entry_id=<id>, scope="occurrence", original_start=<original slot>,
+4. outlook_update_event(store_id=store,
+      entry_id=<id>, scope="occurrence", original_start=<original slot>,
       start="<new start>",
       end="<new end>")
 ```
@@ -216,9 +220,9 @@ Outlook handles the meeting save. The tool makes no separate send call.
 ## 13. Accept or decline a meeting invite
 
 ```
-1. outlook_search_mails(query="<organizer or subject>", scope="subject_body")
-   or outlook_list_events / outlook_get_event to locate the meeting → entry_id
-2. outlook_respond_event(entry_id=<id>, response="accept")
+1. Use outlook_list_events / outlook_get_event in the selected store to identify
+   the appointment and its scope. Confirm whether to notify the organizer.
+2. outlook_respond_event(store_id=store, entry_id=<id>, response="accept")
    # or "tentative" / "decline"
 ```
 
@@ -228,9 +232,9 @@ For recurring meetings, pass the approved scope and, for an occurrence, its orig
 ## 14. Look up a contact
 
 ```
-A) outlook_search_contacts(query="<name fragment>", response_format="json")
+A) outlook_search_contacts(store_id=store, query="<name fragment>", response_format="json")
    → grab entry_id of the right hit
-B) outlook_get_contact(entry_id=<id>) for full details
+B) outlook_get_contact(store_id=store, entry_id=<id>) for full details
 ```
 
 `search_contacts` matches across name, email, company, and job title — if the user only knows a company, that works.
@@ -240,8 +244,8 @@ B) outlook_get_contact(entry_id=<id>) for full details
 > "Remind me to follow up on Bob's contract email next Monday."
 
 ```
-1. outlook_search_mails(...) → confirm the email exists, capture subject
-2. outlook_create_task(
+1. outlook_search_mails(store_id=store, ...) → confirm the email exists, capture subject
+2. outlook_create_task(store_id=store,
       subject="Follow up: " + <email subject>,
       due_date="<next Monday>T09:00:00",
       reminder="<next Monday>T09:00:00",
@@ -253,24 +257,24 @@ Stashing the original `entry_id` in the task body gives you (and the user) a way
 ## 16. Tag mail with a color category
 
 ```
-1. outlook_list_categories()  → confirm the category name exists in the user's profile
-2. outlook_get_mail(entry_id, include_body=false, response_format="json")
+1. outlook_list_categories(store_id=store)  → confirm the category name exists in the selected store
+2. outlook_get_mail(store_id=store, entry_id=<id>, include_body=false, response_format="json")
    → read existing categories so you don't clobber them
-3. outlook_set_category(
+3. outlook_set_category(store_id=store,
       entry_id=<id>,
-      categories="<existing>, Important")    # comma-separated; empty clears all
+      categories="<reviewed replacement names>")    # comma-separated; empty clears all
 ```
 
-Categories must already exist in the user's Outlook profile. If the user wants a new category, they create it in Outlook itself first — there is no `create_category` tool.
+Choose names from the selected store's list. The legacy replacement tool can also write unlisted strings. If the user wants a new category, they create it in Outlook itself first — there is no `create_category` tool.
 
 ## 17. Toggle a mail rule
 
 > "Turn off the rule that auto-files Jira mail."
 
 ```
-1. outlook_list_rules()  → find the exact name (e.g. "Auto-file Jira to Engineering/Jira")
+1. outlook_list_rules(store_id=store)  → find the exact name (e.g. "Auto-file Jira to Engineering/Jira")
 2. Confirm with the user: "Disable rule 'Auto-file Jira to Engineering/Jira'?"
-3. outlook_toggle_rule(rule_name="Auto-file Jira to Engineering/Jira",
+3. outlook_toggle_rule(store_id=store, rule_name="Auto-file Jira to Engineering/Jira",
                        enabled=false)
 ```
 
@@ -279,7 +283,7 @@ The change is live immediately. Always confirm the exact name; partial / fuzzy m
 ## 18. Confirm OOO status
 
 ```
-outlook_get_out_of_office()
+outlook_get_out_of_office(store_id=store)
 ```
 
 If `status: "on"`, surface that to the user. If they want to **change** OOO state, you cannot — direct them to Outlook → File → Automatic Replies.
