@@ -149,7 +149,21 @@ Disallowed tools are filtered **at registration time** and are absent from MCP
 MCP App resources are static and may still display controls for disabled tools;
 those controls cannot invoke unregistered tools.
 
-The server checks account rights on every registered mailbox operation. Per-action write confirmation is tracked in [issue #3](https://github.com/scepbjoern/Outlook-Classic-MCP/issues/3).
+The server checks account rights on every registered mailbox operation. To allow
+calendar reads and event creation only, use a version 2 policy with
+`tools.enabled_tools` set to `outlook_whoami`, `outlook_list_events`,
+`outlook_get_event` and `outlook_create_event`. Give write access only to
+the account intended for new events. Keep the account lists local.
+
+Interactive clients can show the proposed event and ask for one-time approval.
+In [Codex](https://learn.chatgpt.com/docs/extend/mcp), set
+`mcp_servers.<id>.tools.outlook_create_event.approval_mode` to `"prompt"`
+and use human review for the call. A client calling the server directly can
+create events in a write-authorized account without that prompt. Enabling
+`outlook_create_event` also permits invitations and recurring events. The
+tool allowlist filters names only. Server-side approval for individual actions
+is discussed in [issue #3](https://github.com/scepbjoern/Outlook-Classic-MCP/issues/3).
+
 Allowed tool outputs may also be transmitted to the MCP client or its LLM
 provider; running the COM bridge locally does not prevent that.
 

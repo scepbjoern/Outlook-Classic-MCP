@@ -189,6 +189,11 @@ def test_independent_permissions_and_filtered_identity():
     ns.Stores[1].GetDefaultFolder.assert_not_called()
     assert call("create_event", store_id="store-b", subject="Write only",
                 start="2026-11-21", end="2026-11-22")["status"] == "created"
+    event = ns.Stores[1].GetDefaultFolder.return_value.Items.Add.return_value
+    event.Save.assert_called_once_with()
+    event.Recipients.Add.assert_not_called()
+    event.GetRecurrencePattern.assert_not_called()
+    event.Send.assert_not_called()
 
 
 @pytest.mark.parametrize("defect", ["duplicate_address", "shared_store", "no_store"])

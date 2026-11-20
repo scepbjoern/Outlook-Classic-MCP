@@ -95,6 +95,17 @@ Read freely:
 Confirm before calling (these change shared state or send messages):
 `send_mail`, `reply_mail`, `forward_mail`, `delete_mail`, `move_mail`, `mark_mail`, `save_attachments`, `create_event` (especially with attendees — that sends a meeting invite immediately), `update_event`, `delete_event`, `respond_event` (with `send_response=true`), `create_folder`, `create_task`, `complete_task`, `set_category`, `toggle_rule`.
 
+For `outlook_create_event`, show the target calendar, subject, start and end
+with time zone, reminder, and any location or notes. Say whether it is a
+one-time appointment or a series and who will receive invitations. For a
+personal one-time appointment, omit `attendees` and `recurrence`.
+Ask “May I create this event as shown?” in the user's language. Use the
+client's one-time approval for that exact call when available, or wait for
+an explicit reply in chat. If the user requests a change, discard the
+previous proposal and show the revised one for approval. On refusal or
+without a response, stop. After approval, submit the shown details once.
+If the outcome is uncertain, check the selected calendar before retrying.
+
 Two staging tricks worth knowing:
 - `outlook_send_mail(..., save_only=true)` saves to Drafts without sending — perfect for "draft a reply for me to look at" requests.
 - `outlook_respond_event(..., send_response=false)` records your local accept/decline without emailing the organizer.
