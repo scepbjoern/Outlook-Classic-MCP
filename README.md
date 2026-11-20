@@ -131,6 +131,30 @@ server entry in its MCP config:
 | Out-of-Office  | `get_out_of_office` |
 | Account        | `whoami` — sanity check; shows the bound mailbox |
 
+### Configure the available tools
+
+By default, all original 31 MCP tools are registered. A local, user-specific
+JSON configuration can restrict whole groups and/or individual tools without
+removing other Outlook functionality. For example:
+
+```json
+{
+  "version": 1,
+  "tools": {"disabled_tools": ["outlook_delete_mail"]}
+}
+```
+
+On Windows, save it at `%APPDATA%\outlook-classic-mcp\config.json` or set
+`OUTLOOK_MCP_CONFIG` to the full path of another local JSON file before
+starting the server. A missing default file preserves the original tool set;
+invalid configuration prevents startup. Disabled tools are not registered or
+advertised by MCP `tools/list`. **Tool filtering does not enforce mailbox
+authorization or require approval for enabled write operations.**
+
+See the [configuration reference](docs/tool-configuration.md) for allowed
+groups/names, precedence, restrictive allowlists, startup errors and the
+[fictional example config](examples/config.example.json).
+
 ---
 
 ## MCP Apps — interactive UI in the chat

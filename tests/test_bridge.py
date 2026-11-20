@@ -37,6 +37,7 @@ def bridge(monkeypatch):
     from outlook_mcp.bridge import OutlookBridge
 
     monkeypatch.setattr(dynamic, "Dispatch", lambda name: _fake_outlook())
+    monkeypatch.setattr("outlook_mcp.bridge._launch_outlook", lambda: False)
     b = OutlookBridge()
     b.start()
     yield b
@@ -121,7 +122,6 @@ def test_error_surfaces_when_reattach_fails(bridge, monkeypatch):
 
     monkeypatch.setattr(dynamic, "Dispatch", dead_dispatch)
     monkeypatch.setattr(bridge_mod, "_ATTACH_TIMEOUT_SEC", 0)
-    monkeypatch.setattr(bridge_mod, "_launch_outlook", lambda: False)
 
     def dies(outlook, namespace):
         raise _rpc_unavailable()

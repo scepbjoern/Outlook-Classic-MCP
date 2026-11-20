@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "tools": {
+    "disabled_tools": ["outlook_delete_mail"],
+    "disabled_groups": ["rules"]
+  }
+}

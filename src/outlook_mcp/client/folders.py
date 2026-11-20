@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pythoncom
-
 from outlook_mcp.constants import DEFAULT_FOLDER_MAP, OL_FOLDER_INBOX
 from outlook_mcp.errors import OutlookError, is_disconnect_error
 
@@ -70,6 +68,9 @@ def resolve_folder(namespace: Any, folder: str | None) -> Any:
 
 
 def get_item_by_id(namespace: Any, entry_id: str, store_id: str | None = None) -> Any:
+    # Import on the COM thread. Registration and config validation need no COM.
+    import pythoncom
+
     try:
         if store_id:
             return namespace.GetItemFromID(entry_id, store_id)

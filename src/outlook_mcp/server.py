@@ -5,21 +5,25 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from outlook_mcp.bridge import OutlookBridge
+from outlook_mcp.config import ToolPolicy, load_tool_policy
 from outlook_mcp.tools import register_all
 from outlook_mcp.ui import register_ui
 
 INSTRUCTIONS = """\
-This MCP server gives you full access to Microsoft Outlook desktop on
-Windows via COM automation. It can read and send mail, manage calendar
-events, contacts, tasks, color categories, mail rules, and check
-Out-of-Office status.
+This MCP server provides configurable access to Microsoft Outlook desktop on
+Windows via COM automation. Depending on the local tool policy, it can read
+and send mail, manage calendar events, contacts, tasks, categories and rules,
+and check Out-of-Office status.
 
 Authentication piggybacks on whatever account Outlook is signed into —
 no Microsoft Graph API, no Entra app registration, no OAuth tokens.
 
 PREREQUISITE: classic Outlook (OUTLOOK.EXE) must be installed. The
-server auto-launches Outlook on first call; the new "modern" Outlook
+server attaches to Outlook at startup and can launch it; the new "modern" Outlook
 (olk.exe) is NOT supported.
+
+Only use tools advertised by this server; the local config may disable tools.
+Tool filtering does not enforce account authorization or write approval.
 
 Tool categories (all prefixed `outlook_`):
   - Mail: list, search, get, send, reply, forward, move, delete, mark, save_attachments
@@ -44,14 +48,16 @@ and current local time.
 """
 
 
-def build_server() -> tuple[FastMCP, OutlookBridge]:
+def build_server(*, policy: ToolPolicy | None = None) -> tuple[FastMCP, OutlookBridge]:
     """Construct the FastMCP instance, bridge, and wire all tools.
 
     The bridge is *not* started here — entrypoint.main() does that so
     the readiness wait happens after logging is configured.
     """
+    # Validate config before constructing or starting any Outlook components.
+    effective_policy = policy if policy is not None else load_tool_policy()
     mcp = FastMCP("outlook_mcp", instructions=INSTRUCTIONS)
     bridge = OutlookBridge()
-    register_all(mcp, bridge)
+    register_all(mcp, bridge, effective_policy)
     register_ui(mcp)
     return mcp, bridge
