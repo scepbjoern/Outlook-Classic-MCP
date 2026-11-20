@@ -133,7 +133,7 @@ server entry in its MCP config:
 
 ### Calendar sensitivity
 
-`outlook_list_events` and `outlook_get_event` return the native Outlook
+`outlook_list_events` and `outlook_get_event` use the native Outlook
 `sensitivity` and its `sensitivity_label`. The four levels are Normal (0),
 Personal (1), Private (2) and Confidential (3). Pass `"sensitivity": 2` to
 `outlook_create_event` or `outlook_update_event` to mark an appointment Private.
@@ -141,9 +141,14 @@ Omit the field when rescheduling to preserve its current level. Pass
 `"sensitivity": 0` to reset it to Normal.
 
 A color category named “Privat” is an independent, user-defined label.
-Outlook stores the Private marker in `AppointmentItem.Sensitivity`. Authorized
-calendar queries can still return the subject, body and other private event
-details to the client. Output filtering is tracked in [issue #5](https://github.com/scepbjoern/Outlook-Classic-MCP/issues/5).
+Outlook stores the Private marker in `AppointmentItem.Sensitivity`.
+
+**Upgrade note.** After upgrading and restarting the MCP server, existing
+installations default to `busy_only`. Private appointments appear as
+“Appointment” with start, end and busy status. The same fallback applies when
+Outlook cannot reliably report sensitivity. No config migration is required.
+To opt into full private details or hide private appointments entirely, see
+[calendar privacy settings and migration](docs/tool-configuration.md#calendar-privacy).
 
 ### Configure the available tools
 

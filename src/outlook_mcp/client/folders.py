@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from outlook_mcp.client.mailbox import Mailbox
-from outlook_mcp.constants import DEFAULT_FOLDER_MAP, OL_FOLDER_INBOX
-from outlook_mcp.errors import OutlookError, is_missing_item_error
+from outlook_mcp.config import PrivacyMode
+from outlook_mcp.constants import DEFAULT_FOLDER_MAP, OL_CLASS_APPOINTMENT, OL_FOLDER_INBOX
+from outlook_mcp.errors import ITEM_NOT_FOUND, OutlookError, is_missing_item_error
 
 
 def _safe_get(item: Any, attr: str, default: Any = None) -> Any:
@@ -58,17 +59,23 @@ def get_item_by_id(
 ) -> Any:
     try:
         item = namespace.GetItemFromID(entry_id, mailbox.store_id)
+        if item is None:
+            raise OutlookError(ITEM_NOT_FOUND)
+        mailbox.require_store(item.Parent)
+        if classes:
+            item_class = item.Class
+            if item_class not in classes:
+                if item_class == OL_CLASS_APPOINTMENT and mailbox.privacy == PrivacyMode.EXCLUDE:
+                    raise OutlookError(ITEM_NOT_FOUND)
+                raise OutlookError("The EntryID refers to a different type of Outlook item.")
+    except OutlookError:
+        raise
     except Exception as exc:
-        if not is_missing_item_error(exc):
-            raise
-        raise OutlookError(
-            "Item not found in the selected store. The EntryID may be stale or belong to a different store."
-        ) from exc
-    if item is None:
-        raise OutlookError("Item not found in the selected store.")
-    mailbox.require_store(item.Parent)
-    if classes and item.Class not in classes:
-        raise OutlookError("The EntryID refers to a different type of Outlook item.")
+        if is_missing_item_error(exc):
+            raise OutlookError(ITEM_NOT_FOUND) from exc
+        # An ID supplied to any tool may resolve to a private appointment.
+        # Keep the cause for the COM bridge's disconnect detection.
+        raise OutlookError("Outlook could not verify the requested item.") from exc
     return item
 
 
@@ -84,14 +91,18 @@ def list_folders(
 
     def walk(folder: Any, path: str, depth: int) -> None:
         mailbox.require_store(folder)
-        items_obj = _safe_get(folder, "Items")
+        # Raw counts can include excluded items even in mixed folders.
+        counts = {"item_count": None, "unread_count": None}
+        if mailbox.privacy != PrivacyMode.EXCLUDE:
+            items_obj = _safe_get(folder, "Items")
+            counts = {"item_count": items_obj.Count if items_obj else 0,
+                      "unread_count": _safe_get(folder, "UnReadItemCount", 0)}
         out.append(
             {
                 "name": folder.Name,
                 "store_id": mailbox.store_id,
                 "path": path,
-                "item_count": items_obj.Count if items_obj else 0,
-                "unread_count": _safe_get(folder, "UnReadItemCount", 0),
+                **counts,
                 "default_item_type": _safe_get(folder, "DefaultItemType", -1),
             }
         )

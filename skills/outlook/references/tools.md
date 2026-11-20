@@ -215,8 +215,7 @@ List calendar events in a date range, including expanded recurring instances.
 **Returns**: `{ start, end, count, store_id, items: [...] }`. Items include `entry_id, store_id, subject, start, end, location, organizer, is_recurring, all_day, preview` (200-char body excerpt), plus `sensitivity` and `sensitivity_label` from the listed appointment or occurrence.
 
 The native Outlook levels are Normal (0), Personal (1), Private (2) and Confidential (3).
-An unreadable property returns `null` and `Unknown`. An unrecognized numeric code retains its value with the label `Unknown`.
-A custom color category named “Privat” is independent of the native Private marker. Authorized reads can return private event content with either label.
+These fields describe full rows. By default a Private or unclassified row contains only `subject: "Appointment"`, `start`, `end` and `busy_status`. Under `exclude`, it is omitted. With `full`, confirmed Private appointments can include identifying fields. A custom color category named “Privat” is independent of the native marker.
 
 ### `outlook_get_event`
 
@@ -231,6 +230,7 @@ Full event detail, including attendees and their RSVP status.
 
 Detail and update calls use the appointment resolved by Outlook for the supplied EntryID and store.
 Expanded occurrences can share a series EntryID. These calls have no occurrence-date selector.
+Detail uses the same privacy policy as the list. A returned master also respects its live exceptions. A hidden item produces the standard missing-item error.
 
 ### `outlook_create_event`
 
@@ -250,6 +250,8 @@ Create a calendar event or meeting invite. **Adding any attendee turns this into
 | `sensitivity`       | int 0–3        | omitted | Set the native Outlook level. Omit to use Outlook's default. |
 
 **Returns**: `{ status: "created", entry_id, subject, start, end }`.
+
+Protected appointment actions return status only. A `busy_only` create adds the four availability fields. This also applies to responses from update, delete, respond and set-category operations on protected appointments.
 
 Confirm attendee list, times, recurrence and any explicitly selected sensitivity with the user before calling.
 

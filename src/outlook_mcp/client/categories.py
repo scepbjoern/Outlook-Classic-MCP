@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from outlook_mcp.client.calendar_privacy import classify_event
 from outlook_mcp.client.mailbox import Mailbox
 from outlook_mcp.client.folders import get_item_by_id
+from outlook_mcp.config import PrivacyMode
+from outlook_mcp.constants import OL_CLASS_APPOINTMENT
 
 
 def list_categories(namespace: Any, mailbox: Mailbox) -> dict[str, Any]:
@@ -30,6 +33,12 @@ def set_category(
     item = get_item_by_id(namespace, mailbox, entry_id)
     item.Categories = categories
     item.Save()
+    item_class = item.Class
+    if type(item_class) is not int or (
+        item_class == OL_CLASS_APPOINTMENT
+        and classify_event(item, mailbox.privacy).mode != PrivacyMode.FULL
+    ):
+        return {"status": "updated"}
     return {
         "status": "updated",
         "entry_id": entry_id,

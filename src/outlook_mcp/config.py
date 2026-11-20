@@ -11,6 +11,7 @@ import os
 import re
 import stat
 from dataclasses import dataclass, field
+from enum import IntEnum
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,23 @@ class AccountPolicy:
     write: frozenset[str] = field(default_factory=frozenset)
 
 
+class PrivacyMode(IntEnum):
+    FULL = 0
+    BUSY_ONLY = 1
+    EXCLUDE = 2
+
+
+@dataclass(frozen=True)
+class CalendarPrivacy:
+    default: PrivacyMode = PrivacyMode.BUSY_ONLY
+    accounts: dict[str, PrivacyMode] = field(default_factory=dict)
+
+    def for_account(self, address: str) -> PrivacyMode:
+        if self.default == PrivacyMode.EXCLUDE:
+            return self.default
+        return self.accounts.get(normalize_identifier(address), self.default)
+
+
 @dataclass(frozen=True)
 class ToolPolicy:
     """Allowlist constraints intersect; deny rules always take precedence.
@@ -81,6 +99,7 @@ class ToolPolicy:
     enabled_tools: frozenset[str] | None = None
     disabled_tools: frozenset[str] = field(default_factory=frozenset)
     accounts: AccountPolicy | None = None
+    calendar_privacy: CalendarPrivacy = field(default_factory=CalendarPrivacy)
 
     def allows(self, group: str, name: str) -> bool:
         if group not in TOOL_GROUPS or name not in TOOL_GROUPS[group]:
@@ -146,6 +165,29 @@ def _smtp_addresses(obj: dict[str, Any], key: str) -> frozenset[str]:
     return normalized
 
 
+def _privacy_mode(value: Any) -> PrivacyMode:
+    for mode in PrivacyMode:
+        if value == mode.name.lower():
+            return mode
+    raise ToolConfigError("Calendar privacy mode must be full, busy_only or exclude")
+
+
+def _calendar_privacy(value: Any, version: int) -> CalendarPrivacy:
+    config = _object(value, "calendar_privacy", {"default", "accounts"})
+    overrides = config.get("accounts", {})
+    if "accounts" in config and version != 2:
+        raise ToolConfigError("calendar_privacy.accounts requires config.version 2")
+    if not isinstance(overrides, dict):
+        raise ToolConfigError("calendar_privacy.accounts must map exact SMTP addresses to modes")
+    accounts = {}
+    for address, mode in overrides.items():
+        key = normalize_identifier(address)
+        if not is_smtp_address(address) or key in accounts:
+            raise ToolConfigError("calendar_privacy.accounts requires unique, exact SMTP addresses")
+        accounts[key] = _privacy_mode(mode)
+    return CalendarPrivacy(_privacy_mode(config.get("default", "busy_only")), accounts)
+
+
 def parse_tool_policy(raw: str) -> ToolPolicy:
     """Parse and validate the complete configuration, rejecting unknown fields."""
     try:
@@ -154,7 +196,7 @@ def parse_tool_policy(raw: str) -> ToolPolicy:
         raise
     except (ValueError, RecursionError) as exc:
         raise ToolConfigError(f"Invalid JSON configuration: {exc}") from exc
-    root = _object(data, "config", {"version", "tools", "accounts"})
+    root = _object(data, "config", {"version", "tools", "accounts", "calendar_privacy"})
     version = root.get("version", 1)
     if type(version) is not int or version not in (1, 2):
         raise ToolConfigError("config.version must be 1 or 2")
@@ -180,6 +222,7 @@ def parse_tool_policy(raw: str) -> ToolPolicy:
         enabled_tools=enabled_tools,
         disabled_tools=disabled_tools or frozenset(),
         accounts=account_policy,
+        calendar_privacy=_calendar_privacy(root.get("calendar_privacy", {}), version),
     )
 
 

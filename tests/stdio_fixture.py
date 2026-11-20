@@ -1,17 +1,25 @@
 """Run the normal STDIO entry point with a synthetic Outlook boundary."""
 
 import sys
+from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from outlook_mcp.entrypoint import main
+from test_mailbox import make_profile
 
 
 class SyntheticBridge:
     def __init__(self):
         self.log = Path(sys.argv[1])
         self.log.write_text("constructed\n", encoding="utf-8")
+        self.namespace = make_profile()
+        for store in self.namespace.Stores:
+            event = store.GetDefaultFolder.return_value.Items.Add.return_value
+            event.EntryID = "synthetic-shared-id"
+            event.Subject = event.Body = "synthetic-private-content"
+            event.Sensitivity = 2
+            event.Start, event.End = datetime(2026, 11, 23, 10), datetime(2026, 11, 23, 11)
 
     def start(self):
         pass
@@ -24,15 +32,7 @@ class SyntheticBridge:
             print(function.__name__, file=stream)
         if function.__name__ == "call_in_mailbox":
             kwargs.pop("retry_on_disconnect")
-            accounts = [
-                SimpleNamespace(SmtpAddress=f"{key}@example.test",
-                                DeliveryStore=SimpleNamespace(StoreID=f"store-{key}"))
-                for key in ("a", "b")
-            ]
-            namespace = SimpleNamespace(Accounts=SimpleNamespace(
-                Count=len(accounts), Item=lambda index: accounts[index - 1],
-            ))
-            return function(None, namespace, *args, **kwargs)
+            return function(None, self.namespace, *args, **kwargs)
         return {"user": "Synthetic User"}
 
 

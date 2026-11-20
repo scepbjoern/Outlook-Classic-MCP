@@ -18,13 +18,13 @@ FIXTURE = Path(__file__).with_name("stdio_fixture.py")
 
 
 @asynccontextmanager
-async def session_at(tmp_path):
+async def session_at(tmp_path, *, errlog=None, log_level="INFO"):
     params = StdioServerParameters(
         command=sys.executable,
         args=[str(FIXTURE), str(tmp_path / "bridge.log")],
-        env={"APPDATA": str(tmp_path), "XDG_CONFIG_HOME": str(tmp_path)},
+        env={"APPDATA": str(tmp_path), "XDG_CONFIG_HOME": str(tmp_path), "OUTLOOK_MCP_LOG": log_level},
     )
-    async with stdio_client(params) as streams:
+    async with stdio_client(params, errlog=errlog if errlog is not None else sys.stderr) as streams:
         async with ClientSession(*streams, read_timeout_seconds=timedelta(seconds=20)) as session:
             await session.initialize()
             yield session
@@ -82,6 +82,68 @@ def test_registered_tool_rejects_forbidden_store_over_stdio(tmp_path):
             assert result.isError and "does not grant read" in result.content[0].text
 
     asyncio.run(exercise())
+
+
+def test_calendar_privacy_over_stdio(tmp_path):
+    config = tmp_path / "outlook-classic-mcp" / "config.json"
+    config.parent.mkdir()
+    policy = {"version": 2, "accounts": {"read": ["a@example.test", "b@example.test"]},
+              "calendar_privacy": {"accounts": {"B@example.test": "exclude"}}}
+    config.write_text(json.dumps(policy), encoding="utf-8")
+    known_id = "synthetic-shared-id"
+    secret = "synthetic-private-content"
+
+    async def exercise():
+        async with session_at(tmp_path) as session:
+            for fmt in ("json", "markdown"):
+                for store, mode in (("store-a", "busy_only"), ("store-b", "exclude")):
+                    args = {"store_id": store, "response_format": fmt}
+                    listing = await session.call_tool("outlook_list_events", args)
+                    detail = await session.call_tool("outlook_get_event", {**args, "entry_id": known_id})
+                    for result in (listing, detail):
+                        wire = result.model_dump_json(by_alias=True)
+                        assert secret not in wire and known_id not in wire
+                    assert not listing.isError
+                    if mode == "exclude":
+                        assert listing.structuredContent["count"] == 0 and listing.structuredContent["items"] == []
+                        missing = await session.call_tool("outlook_get_event", {**args, "entry_id": "missing-id"})
+                        assert detail.isError and detail == missing
+                    else:
+                        row, = listing.structuredContent["items"]
+                        assert not detail.isError and detail.structuredContent == row
+                        assert set(row) == {"subject", "start", "end", "busy_status"}
+                        assert row["subject"] == "Appointment" and row["busy_status"] == 2
+                        assert "Appointment" in detail.content[0].text and "Appointment" in listing.content[0].text
+                        if fmt == "json":
+                            assert json.loads(detail.content[0].text) == row
+        policy["calendar_privacy"]["accounts"]["B@example.test"] = "full"
+        config.write_text(json.dumps(policy), encoding="utf-8")
+        async with session_at(tmp_path) as session:
+            detail = await session.call_tool("outlook_get_event", {"account": "b@example.test", "entry_id": known_id})
+            assert not detail.isError and detail.structuredContent["body"] == secret
+
+    asyncio.run(exercise())
+
+
+def test_private_create_is_absent_from_stdio_debug_log(tmp_path):
+    config = tmp_path / "outlook-classic-mcp" / "config.json"
+    config.parent.mkdir()
+    config.write_text('{"version":2,"accounts":{"write":["b@example.test"]}}', encoding="utf-8")
+    secret = "synthetic-private-debug-subject"
+    log = tmp_path / "server.log"
+
+    async def exercise():
+        with log.open("w", encoding="utf-8") as stderr:
+            async with session_at(tmp_path, errlog=stderr, log_level="DEBUG") as session:
+                result = await session.call_tool("outlook_create_event", {
+                    "store_id": "store-b", "sensitivity": 2, "subject": secret, "body": secret,
+                    "start": "2026-11-23T10:00", "end": "2026-11-23T11:00",
+                })
+                assert not result.isError and secret not in result.model_dump_json()
+
+    asyncio.run(exercise())
+    trace = log.read_text(encoding="utf-8", errors="replace")
+    assert "Starting outlook_mcp" in trace and secret not in trace
 
 
 def test_calendar_sensitivity_schema_and_validation_over_stdio(tmp_path):

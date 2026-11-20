@@ -18,6 +18,10 @@ def main() -> None:
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
     log = logging.getLogger("outlook_mcp")
+    # The MCP transport's DEBUG traces can include incoming tool arguments
+    # (e.g. the subject supplied when creating a private appointment).
+    if logging.getLogger("mcp").isEnabledFor(logging.DEBUG):
+        logging.getLogger("mcp").setLevel(logging.INFO)
 
     try:
         mcp, bridge = build_server()
