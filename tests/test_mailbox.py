@@ -80,6 +80,39 @@ def registered(namespace, *, read=("a", "b"), write=("b",)):
     return invoke
 
 
+@pytest.mark.parametrize(("parent_id", "mapi_id", "equivalent", "allowed"), [
+    (None, "STORE-B", False, True),
+    (None, "alternate-provider-id", True, True),
+    (None, "store-a", False, False),
+    (None, "", True, False),
+    ("store-a", "store-b", True, False),
+])
+def test_listed_event_store_proof(parent_id, mapi_id, equivalent, allowed, monkeypatch):
+    from outlook_mcp.client import calendar
+
+    ns = make_profile()
+    event = ns.Stores[1].GetDefaultFolder.return_value.Items.Add.return_value
+    event.Parent = SimpleNamespace(StoreID=parent_id)
+    accessor = event.PropertyAccessor
+    accessor.GetProperty.return_value = b"synthetic-store-entry-id"
+    accessor.BinaryToString.return_value = mapi_id
+    ns.CompareEntryIDs.return_value = equivalent
+    summarize = MagicMock(return_value={"entry_id": "event-b"})
+    monkeypatch.setattr(calendar, "_event_summary", summarize)
+    call = registered(ns)
+    if allowed:
+        assert call("list_events", store_id="store-b")["count"] == 1
+        summarize.assert_called_once_with(event)
+    else:
+        with pytest.raises(Exception, match="selected store"):
+            call("list_events", store_id="store-b")
+        summarize.assert_not_called()
+    if parent_id:
+        accessor.GetProperty.assert_not_called()
+    else:
+        accessor.GetProperty.assert_called_once_with("http://schemas.microsoft.com/mapi/proptag/0x0FFB0102")
+
+
 def test_registered_calendar_routes_each_operation_to_selected_store():
     ns = make_profile()
     a, b = ns.Stores

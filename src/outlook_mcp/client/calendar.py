@@ -21,7 +21,7 @@ from outlook_mcp.constants import (
     OL_RECURS_YEARLY,
     OL_TO,
 )
-from outlook_mcp.errors import OutlookError
+from outlook_mcp.errors import OutlookError, is_disconnect_error
 from outlook_mcp.schemas import Recurrence
 from outlook_mcp.utils.formatting import from_iso, to_com, to_iso, truncate
 
@@ -32,6 +32,33 @@ _RECURRENCE_TYPE_MAP = {
     "monthly": OL_RECURS_MONTHLY,
     "yearly": OL_RECURS_YEARLY,
 }
+
+# PidTagStoreEntryId identifies the message store containing the item.
+_PR_STORE_ENTRYID = "http://schemas.microsoft.com/mapi/proptag/0x0FFB0102"
+
+
+def _require_listed_event_store(ev: Any, mailbox: Mailbox, namespace: Any) -> None:
+    parent_id = getattr(ev.Parent, "StoreID", None)
+    if isinstance(parent_id, str) and parent_id:
+        if not mailbox.matches_store_id(parent_id):
+            raise OutlookError("Outlook returned a calendar item outside the selected store.")
+        return
+
+    # Some calendar rows have no folder StoreID on Parent. Verify that same
+    # row's own MAPI identity before accessing its subject or other content.
+    try:
+        accessor = ev.PropertyAccessor
+        item_store = accessor.BinaryToString(accessor.GetProperty(_PR_STORE_ENTRYID))
+        if isinstance(item_store, str) and item_store:
+            if mailbox.matches_store_id(item_store):
+                return
+            if namespace.CompareEntryIDs(item_store, mailbox.store_id) is True:
+                return
+    except Exception as exc:
+        if is_disconnect_error(exc):
+            raise
+        raise OutlookError("Cannot verify the calendar item's message store.") from exc
+    raise OutlookError("Cannot verify the calendar item belongs to the selected store.")
 
 
 def _event_summary(ev: Any) -> dict[str, Any]:
@@ -110,7 +137,7 @@ def list_events(
 
     results: list[dict[str, Any]] = []
     for ev in filtered:
-        mailbox.require_store(ev.Parent)
+        _require_listed_event_store(ev, mailbox, namespace)
         results.append({**_event_summary(ev), "store_id": mailbox.store_id})
         if len(results) >= limit:
             break

@@ -29,8 +29,11 @@ class Mailbox:
     store_id: str
     single_account: bool
 
+    def matches_store_id(self, store_id: Any) -> bool:
+        return bool(self.store_id) and _identifier(store_id) == _identifier(self.store_id)
+
     def require_store(self, folder: Any) -> None:
-        if not self.store_id or _identifier(getattr(folder, "StoreID", None)) != _identifier(self.store_id):
+        if not self.matches_store_id(getattr(folder, "StoreID", None)):
             raise OutlookError("Outlook returned a folder or item outside the selected store.")
 
     def default_folder(self, folder_type: int) -> Any:
