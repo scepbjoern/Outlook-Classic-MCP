@@ -98,7 +98,7 @@ def test_calendar_privacy_over_stdio(tmp_path):
             for fmt in ("json", "markdown"):
                 for store, mode in (("store-a", "busy_only"), ("store-b", "exclude")):
                     args = {"store_id": store, "response_format": fmt}
-                    listing = await session.call_tool("outlook_list_events", args)
+                    listing = await session.call_tool("outlook_list_events", {**args, "start": "2026-11-23", "end": "2026-11-24"})
                     detail = await session.call_tool("outlook_get_event", {**args, "entry_id": known_id})
                     for result in (listing, detail):
                         wire = result.model_dump_json(by_alias=True)

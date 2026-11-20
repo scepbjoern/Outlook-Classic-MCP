@@ -131,6 +131,16 @@ server entry in its MCP config:
 | Out-of-Office  | `get_out_of_office` |
 | Account        | `whoami` — sanity check; shows the bound mailbox |
 
+### Selecting recurring appointments
+
+Keep the StoreID, EntryID, `scope` and `original_start` from a listed occurrence
+together for detail, update and delete calls. A moved exception keeps its
+original UTC start. Select `scope="series"` explicitly to act on the whole
+series. Older clients that submit a bare EntryID for a recurring write now
+receive an error. Single appointments keep their previous call format.
+The client previews the selected account, scope, times, changes and meeting
+impact for approval. [Selection examples and Outlook smoke-test matrix](docs/calendar-recurrence.md)
+
 ### Calendar sensitivity
 
 `outlook_list_events` and `outlook_get_event` use the native Outlook

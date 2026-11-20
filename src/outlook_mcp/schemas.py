@@ -19,6 +19,12 @@ EventSensitivity = Annotated[int, Field(
     description="Native Outlook sensitivity (0=Normal, 1=Personal, 2=Private, 3=Confidential). "
                 "Omit to keep the Outlook default on create or the current value on update.",
 )]
+EventScope = Annotated[Literal["occurrence", "series"] | None, Field(
+    description="For recurring appointments select one occurrence or explicitly the entire series.",
+)]
+OriginalStart = Annotated[str | None, Field(
+    description="Copy original_start (with UTC offset) from the listed occurrence, including moved exceptions.",
+)]
 
 
 class ResponseFormat(str, Enum):

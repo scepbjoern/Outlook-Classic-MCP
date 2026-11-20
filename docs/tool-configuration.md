@@ -179,8 +179,9 @@ identifies the selected store and requested date range. Its count and limit
 apply only to visible rows. Under `exclude`, raw folder item and unread totals
 are also suppressed because mixed folders can contain hidden appointments.
 
-Each expanded occurrence or exception uses its own sensitivity. When Outlook
-resolves an EntryID to the series master, the result describes the master.
+Each expanded occurrence or exception uses its own sensitivity. With an
+occurrence selector the server classifies the resolved instance. A legacy
+detail read by EntryID may describe the series master.
 Its disclosure is limited by the strictest live exception. Inaccessible
 recurrence information triggers the unknown-sensitivity fallback.
 [Outlook recurrence exceptions](https://learn.microsoft.com/en-us/office/vba/api/outlook.recurrencepattern.exceptions)

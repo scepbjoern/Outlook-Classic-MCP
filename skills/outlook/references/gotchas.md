@@ -38,7 +38,7 @@ The integration has `outlook_get_out_of_office` (read state) but no tool to set 
 
 ## "Why did everyone get an email when I just rescheduled the meeting?"
 
-Updating an event with attendees usually triggers Outlook to send an updated-meeting notification. Likewise, deleting an event with attendees sends a cancellation. There is no flag to suppress this.
+Update and delete call Outlook's native Save and Delete on the selected appointment. Preview the affected meeting and scope. Delivery of updates or cancellations depends on Outlook and the account. These tools do not explicitly send notices.
 
 **Workaround**: warn the user up front. If they want a quiet local-only change, they have to do it in Outlook directly with "Don't send updates" — the integration can't suppress it.
 
@@ -73,7 +73,7 @@ Moving an item with `outlook_move_mail` returns a `new_entry_id`. The original `
 
 `outlook_update_event` cannot modify the recurrence pattern. It only rewrites scalar fields (subject, start, end, location, body, sensitivity).
 
-**Fix**: to change cadence (or end date or interval), delete the event and recreate it with the new `recurrence` object. If it has attendees, this means a cancellation + a new invite — warn the user.
+Edit the recurrence pattern in Outlook when cadence, interval or end date must change. The series may already contain moved, private or deleted occurrences.
 
 ## Set categories overwrote the existing tags
 

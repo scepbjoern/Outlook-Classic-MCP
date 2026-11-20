@@ -1,6 +1,7 @@
 """Exercise the registered server against two synthetic Exchange stores."""
 import asyncio
 import json
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -11,6 +12,9 @@ from outlook_mcp.config import AccountPolicy, ToolConfigError, parse_tool_policy
 from outlook_mcp.constants import OL_CLASS_APPOINTMENT, OL_FOLDER_CALENDAR
 from outlook_mcp.errors import OutlookError
 from outlook_mcp.server import build_server
+
+
+WINDOW = {"start": "2026-11-20", "end": "2026-11-27"}
 
 
 class Collection(list):
@@ -47,7 +51,7 @@ def make_profile(names=("a", "b")):
         event.RecurrenceState = 0
         event.BusyStatus = 2
         event.AllDayEvent = False
-        event.Start = event.End = None
+        event.Start, event.End = datetime(2026, 11, 23, 10), datetime(2026, 11, 23, 11)
         folder.Items.Restrict.return_value = [event]
         accounts.append(SimpleNamespace(SmtpAddress=name+"@example.test", DeliveryStore=store,
                                         UserName=name, DisplayName=name, AccountType=0))
@@ -99,15 +103,15 @@ def test_listed_event_store_proof(parent_id, mapi_id, equivalent, allowed, monke
     accessor.GetProperty.return_value = b"synthetic-store-entry-id"
     accessor.BinaryToString.return_value = mapi_id
     ns.CompareEntryIDs.return_value = equivalent
-    summarize = MagicMock(return_value={"entry_id": "event-b"})
+    summarize = MagicMock(wraps=calendar._event_summary)
     monkeypatch.setattr(calendar, "_event_summary", summarize)
     call = registered(ns)
     if allowed:
-        assert call("list_events", store_id="store-b")["count"] == 1
+        assert call("list_events", **WINDOW, store_id="store-b")["count"] == 1
         summarize.assert_called_once_with(event, 0)
     else:
         with pytest.raises(Exception, match="selected store"):
-            call("list_events", store_id="store-b")
+            call("list_events", **WINDOW, store_id="store-b")
         summarize.assert_not_called()
     if parent_id:
         accessor.GetProperty.assert_not_called()
@@ -119,8 +123,8 @@ def test_registered_calendar_routes_each_operation_to_selected_store():
     ns = make_profile()
     a, b = ns.Stores
     call = registered(ns)
-    assert call("list_events", account="A@example.test")["items"][0]["entry_id"] == "event-a"
-    assert call("list_events", store_id=b.StoreID)["items"][0]["entry_id"] == "event-b"
+    assert call("list_events", **WINDOW, account="A@example.test")["items"][0]["entry_id"] == "event-a"
+    assert call("list_events", **WINDOW, store_id=b.StoreID)["items"][0]["entry_id"] == "event-b"
     assert call("get_event", entry_id="event-b", store_id=b.StoreID)["store_id"] == b.StoreID
     a.reset_mock()
     result = call("create_event", account="b@example.test", subject="Synthetic meeting",
@@ -187,7 +191,7 @@ def test_independent_permissions_and_filtered_identity():
     assert [row["smtp_address"] for row in identity["accounts"]] == ["b@example.test"]
     assert identity["current_user"] is None and identity["accounts"][0]["write"]
     with pytest.raises(Exception, match="does not grant read"):
-        call("list_events", store_id="store-b")
+        call("list_events", **WINDOW, store_id="store-b")
     ns.Stores[1].GetDefaultFolder.assert_not_called()
     assert call("create_event", store_id="store-b", subject="Write only",
                 start="2026-11-21", end="2026-11-22")["status"] == "created"

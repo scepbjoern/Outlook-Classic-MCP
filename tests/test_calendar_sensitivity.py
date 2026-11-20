@@ -9,7 +9,7 @@ from outlook_mcp.client import calendar
 from outlook_mcp.client.calendar_privacy import native_sensitivity
 from outlook_mcp.errors import OutlookError
 from outlook_mcp.utils.formatting import format_response
-from tests.test_mailbox import make_profile, registered
+from tests.test_mailbox import WINDOW, make_profile, registered
 
 
 NEW_EVENT = {"subject": "Synthetic appointment", "start": "2026-11-23T10:00", "end": "2026-11-23T11:00"}
@@ -29,7 +29,7 @@ def test_create_and_read_each_level(value, label):
     call("create_event", sensitivity=value, **NEW_EVENT, **STORE)
     assert saved == [value]
 
-    listing = call("list_events", **STORE)
+    listing = call("list_events", **WINDOW, **STORE)
     detail = call("get_event", **EXISTING)
     assert detail["categories"] == "Privat"
     for row in (listing["items"][0], detail):
@@ -53,12 +53,13 @@ def test_update_preserves_private_on_move_and_accepts_explicit_zero(recurring):
         assert event.GetRecurrencePattern.return_value.Occurrences == 3
         event.RecurrenceState = 1  # Master resolved by EntryID.
         event.GetRecurrencePattern.return_value.Exceptions.Count = 0
-    call("update_event", sensitivity=2, **EXISTING)
-    call("update_event", start="2026-11-24T10:00", end="2026-11-24T11:00", **EXISTING)
-    detail = call("get_event", **EXISTING)
+    target = {**EXISTING, **({"scope": "series"} if recurring else {})}
+    call("update_event", sensitivity=2, **target)
+    call("update_event", start="2026-11-24T10:00", end="2026-11-24T11:00", **target)
+    detail = call("get_event", **target)
     assert detail["start"].startswith("2026-11-24T10:00")
     assert detail["sensitivity_label"] == "Private"
-    call("update_event", sensitivity=0, **EXISTING)
+    call("update_event", sensitivity=0, **target)
     assert saved == [3, 2, 2, 0]
     assert event.Categories == ""
 
@@ -72,14 +73,15 @@ def test_series_and_expanded_occurrences_report_their_own_values():
     master.RecurrenceState = 1
     master.GetRecurrencePattern.return_value.Exceptions.Count = 0
     occurrences = [
-        SimpleNamespace(Parent=master.Parent, EntryID=master.EntryID, RecurrenceState=state, Sensitivity=value)
+        SimpleNamespace(Parent=master.Parent, EntryID=master.EntryID, RecurrenceState=state, Sensitivity=value,
+                        Start=master.Start, End=master.End)
         for state, value in [(2, 2), (3, 1)]  # Regular occurrence and modified exception.
     ]
     items.IncludeRecurrences = False
     items.Restrict.side_effect = lambda query: occurrences if items.IncludeRecurrences else [master]
-    masters = call("list_events", include_recurrences=False, **STORE)["items"]
+    masters = call("list_events", **WINDOW, include_recurrences=False, **STORE)["items"]
     assert [row["sensitivity"] for row in masters] == [2]
-    expanded = call("list_events", include_recurrences=True, **STORE)["items"]
+    expanded = call("list_events", **WINDOW, include_recurrences=True, **STORE)["items"]
     assert [(row["sensitivity"], row["sensitivity_label"]) for row in expanded] == [(2, "Private"), (1, "Personal")]
 
 

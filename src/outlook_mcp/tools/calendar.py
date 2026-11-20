@@ -10,7 +10,7 @@ from pydantic import Field
 from outlook_mcp.client import calendar as cal_client
 from outlook_mcp.ui import ui_meta, ui_result
 from outlook_mcp.client.mailbox import Access
-from outlook_mcp.schemas import AccountSelector, EventSensitivity, Recurrence, StoreSelector
+from outlook_mcp.schemas import AccountSelector, EventScope, OriginalStart, EventSensitivity, Recurrence, StoreSelector
 from outlook_mcp.utils.formatting import format_response
 from outlook_mcp.utils.safety import safe_item_call
 
@@ -67,6 +67,8 @@ def register(mcp, bridge) -> None:
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
         account: AccountSelector = None,
         store_id: StoreSelector = None,
+        scope: EventScope = None,
+        original_start: OriginalStart = None,
     ) -> CallToolResult:
         """Fetch the event details permitted by the account's calendar privacy policy."""
         data = await bridge.call(
@@ -74,6 +76,8 @@ def register(mcp, bridge) -> None:
             account=account,
             store_id=store_id,
             entry_id=entry_id,
+            scope=scope,
+            original_start=original_start,
         )
         return ui_result(format_response(data, response_format), data)
 
@@ -146,6 +150,8 @@ def register(mcp, bridge) -> None:
         body: Annotated[Optional[str], Field()] = None,
         account: AccountSelector = None,
         store_id: StoreSelector = None,
+        scope: EventScope = None,
+        original_start: OriginalStart = None,
         sensitivity: EventSensitivity = Field(default_factory=lambda: None),
     ) -> str:
         """Update selected fields on an existing event. Omit sensitivity to preserve its value."""
@@ -154,6 +160,8 @@ def register(mcp, bridge) -> None:
             account=account,
             store_id=store_id,
             entry_id=entry_id,
+            scope=scope,
+            original_start=original_start,
             subject=subject,
             start=start,
             end=end,
@@ -178,13 +186,17 @@ def register(mcp, bridge) -> None:
         entry_id: Annotated[str, Field(description="EntryID of the event.")],
         account: AccountSelector = None,
         store_id: StoreSelector = None,
+        scope: EventScope = None,
+        original_start: OriginalStart = None,
     ) -> str:
-        """Delete a calendar event (sends cancellation if it has attendees)."""
+        """Delete the selected appointment, occurrence or entire series. Preview the scope and meeting impact first."""
         data = await bridge.call(
             cal_client.delete_event, Access.READ_WRITE,
             account=account,
             store_id=store_id,
             entry_id=entry_id,
+            scope=scope,
+            original_start=original_start,
         )
         return format_response(data, "json")
 
@@ -205,6 +217,8 @@ def register(mcp, bridge) -> None:
         send_response: Annotated[bool, Field()] = True,
         account: AccountSelector = None,
         store_id: StoreSelector = None,
+        scope: EventScope = None,
+        original_start: OriginalStart = None,
     ) -> str:
         """Accept / tentatively accept / decline a meeting invite."""
         data = await bridge.call(
@@ -212,6 +226,8 @@ def register(mcp, bridge) -> None:
             account=account,
             store_id=store_id,
             entry_id=entry_id,
+            scope=scope,
+            original_start=original_start,
             response=response,
             send_response=send_response,
         )

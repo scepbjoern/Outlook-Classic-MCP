@@ -81,7 +81,14 @@ Most read tools accept `response_format='markdown'` (default; pretty for the use
 }
 ```
 
-`update_event` does not change recurrence. If the user wants to alter a recurring series' cadence, the simplest path is delete + recreate.
+For a recurring calendar row, copy `store_id`, `entry_id`, `scope="occurrence"` and
+`original_start` into detail and write calls. A moved exception keeps the time
+of its original slot. For an entire series, preview `scope="series"` and omit
+`original_start`. Show the target calendar, one occurrence or entire series,
+original and current times, proposed changes and possible impact on attendees.
+Wait for approval of that exact action. If the target cannot be identified,
+re-list and clarify. An availability-only row has no selectable identifier.
+Cadence changes require editing the recurrence pattern in Outlook.
 
 ### Filesystem paths
 
