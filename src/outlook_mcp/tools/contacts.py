@@ -9,6 +9,8 @@ from pydantic import Field
 
 from outlook_mcp.client import contacts as contacts_client
 from outlook_mcp.ui import ui_meta, ui_result
+from outlook_mcp.client.mailbox import Access
+from outlook_mcp.schemas import AccountSelector, StoreSelector
 from outlook_mcp.utils.formatting import format_response
 from outlook_mcp.utils.safety import safe_call
 
@@ -31,8 +33,10 @@ def register(mcp, bridge) -> None:
         limit: Annotated[int, Field(ge=1, le=200)] = 50,
         offset: Annotated[int, Field(ge=0)] = 0,
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> CallToolResult:
-        """List saved contacts from every contact folder in every store.
+        """List saved contacts from contact folders in the selected store.
 
         Note: on corporate accounts the personal contact folders are often
         nearly empty — colleagues live in the directory instead. Use
@@ -40,7 +44,11 @@ def register(mcp, bridge) -> None:
         find people.
         """
         data = await bridge.call(
-            contacts_client.list_contacts, limit=limit, offset=offset
+            contacts_client.list_contacts, Access.READ,
+            account=account,
+            store_id=store_id,
+            limit=limit,
+            offset=offset,
         )
         return ui_result(format_response(data, response_format), data)
 
@@ -76,10 +84,14 @@ def register(mcp, bridge) -> None:
             ),
         ] = True,
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> CallToolResult:
         """Search saved contacts and (by default) the org directory."""
         data = await bridge.call(
-            contacts_client.search_contacts,
+            contacts_client.search_contacts, Access.READ,
+            account=account,
+            store_id=store_id,
             query=query,
             limit=limit,
             include_directory=include_directory,
@@ -105,13 +117,20 @@ def register(mcp, bridge) -> None:
                 description="Display name, alias, or address to resolve (like Ctrl+K in Outlook).",
             ),
         ],
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Resolve a name against the address book/directory to its SMTP address.
 
         Use before sending when you only know a person's name. Ambiguous
         names won't resolve — fall back to outlook_search_contacts.
         """
-        data = await bridge.call(contacts_client.resolve_name, name=name)
+        data = await bridge.call(
+            contacts_client.resolve_name, Access.READ,
+            account=account,
+            store_id=store_id,
+            name=name,
+        )
         return format_response(data, "json")
 
     @mcp.tool(
@@ -128,7 +147,14 @@ def register(mcp, bridge) -> None:
     async def outlook_get_contact(
         entry_id: Annotated[str, Field(description="EntryID of the contact.")],
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Fetch full details for one contact."""
-        data = await bridge.call(contacts_client.get_contact, entry_id=entry_id)
+        data = await bridge.call(
+            contacts_client.get_contact, Access.READ,
+            account=account,
+            store_id=store_id,
+            entry_id=entry_id,
+        )
         return format_response(data, response_format)

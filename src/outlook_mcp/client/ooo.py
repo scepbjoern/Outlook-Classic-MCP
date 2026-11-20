@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from outlook_mcp.client.mailbox import Mailbox
 from outlook_mcp.constants import OOF_PROPTAG
 
 
-def get_out_of_office(outlook: Any, namespace: Any) -> dict[str, Any]:
-    store = namespace.DefaultStore
+def get_out_of_office(namespace: Any, mailbox: Mailbox) -> dict[str, Any]:
+    store = mailbox.store
     try:
         state = store.PropertyAccessor.GetProperty(OOF_PROPTAG)
     except Exception:

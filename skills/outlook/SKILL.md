@@ -45,14 +45,14 @@ These rules are the same across every tool. Internalize them and you'll rarely n
 Any parameter named `folder`, `target_folder`, `parent`, or `root` accepts:
 
 - A **well-known name** (case-insensitive): `inbox`, `sent`, `drafts`, `deleted` (alias `trash`), `outbox`, `junk` (alias `spam`), `calendar`, `contacts`, `tasks`, `notes`.
-- A **slash path** under the default mailbox: `Inbox/Projects/Acme`.
-- A **store-qualified path** when the user has more than one mailbox or PST: `Mailbox - you@example.com/Inbox/Projects/Acme`.
+- A **slash path** under the selected mailbox: `Inbox/Projects/Acme`.
+- A path may begin with the selected store's own root name. Select the mailbox using `account` or `store_id`.
 
 When unsure of the exact path, call `outlook_list_folders` first and use the path string it returns verbatim.
 
 ### Item identity: `EntryID`
 
-Every mail, event, contact, and task has a stable `entry_id` string. List/search tools return it on every item; pass that exact string back to detail/edit/delete/reply/move tools. **Never invent an `entry_id`. Never paste a subject line into an `entry_id` field.**
+Call `outlook_whoami` for authorized accounts. In multi-account profiles, supply an exact SMTP `account` or `store_id` on every mailbox operation. Keep the returned `store_id` with each `entry_id`. List/search tools return it on every item; pass that exact string back to detail/edit/delete/reply/move tools. **Never invent an `entry_id`. Never paste a subject line into an `entry_id` field.**
 
 If the user refers to an item by description ("the email from Bob about Q3"), first find it (e.g. `search_mails`), then act on the returned `entry_id`.
 

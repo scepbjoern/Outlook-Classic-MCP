@@ -118,7 +118,7 @@ Outlook's COM surface needs to warm up the first time. Subsequent calls are fast
 
 ## The user closed Outlook mid-session
 
-Fine since v0.2.5: the integration detects the lost COM connection on the next call, relaunches OUTLOOK.EXE, reconnects, and retries that call automatically. Expect that one call to take 15–30 seconds (cold Outlook start) instead of failing. **Don't retry it yourself** while it's in flight — you'd queue duplicate operations.
+The server reconnects after a lost COM connection. It may retry a read. If a write was interrupted, check the selected store to determine the outcome before repeating it.
 
 If the call still errors with "could not be relaunched", Outlook genuinely failed to start (crash-recovery dialog, profile prompt, pending update). Tell the user to open Outlook manually, then retry.
 
@@ -148,11 +148,9 @@ If you don't actually need DASL, use `scope='subject_body'` / `'subject'` / `'fr
 
 If the numbers disagree, trust the per-item `unread` flag.
 
-## Multi-mailbox: list_mails on "inbox" hit the wrong mailbox
+## Selecting an inbox in a multi-account profile
 
-`folder="inbox"` always resolves to the **default** mailbox's Inbox. If the user has multiple stores (a primary + a shared mailbox + an archive), the shortcut won't reach the others.
-
-**Fix**: use a store-qualified path. `outlook_list_folders(root=null)` shows the top-level store names; pass `"<Store Display Name>/Inbox"`. Confirm the active mailbox with `outlook_whoami` if you're not sure which is which.
+Use `outlook_whoami` to identify the authorized delivery store. Pass its SMTP `account` or `store_id` with `folder="inbox"`. Folder paths are relative to that store.
 
 ## Send error mentions "ResolveAll" or "recipient could not be resolved"
 

@@ -148,8 +148,7 @@ On Windows, save it at `%APPDATA%\outlook-classic-mcp\config.json` or set
 `OUTLOOK_MCP_CONFIG` to the full path of another local JSON file before
 starting the server. A missing default file preserves the original tool set;
 invalid configuration prevents startup. Disabled tools are not registered or
-advertised by MCP `tools/list`. **Tool filtering does not enforce mailbox
-authorization or require approval for enabled write operations.**
+advertised by MCP `tools/list`. Multi-account profiles require a version 2 policy with explicit account read and write lists. Pass an SMTP account or StoreID on each mailbox call. Single-account profiles also enforce any configured account permissions.
 
 See the [configuration reference](docs/tool-configuration.md) for allowed
 groups/names, precedence, restrictive allowlists, startup errors and the

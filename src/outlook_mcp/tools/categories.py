@@ -7,6 +7,8 @@ from typing import Annotated
 from pydantic import Field
 
 from outlook_mcp.client import categories as cat_client
+from outlook_mcp.client.mailbox import Access
+from outlook_mcp.schemas import AccountSelector, StoreSelector
 from outlook_mcp.utils.formatting import format_response
 from outlook_mcp.utils.safety import safe_call
 
@@ -25,9 +27,15 @@ def register(mcp, bridge) -> None:
     @safe_call
     async def outlook_list_categories(
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
-        """List the color categories configured in this Outlook profile."""
-        data = await bridge.call(cat_client.list_categories)
+        """List the color categories in the selected Outlook store."""
+        data = await bridge.call(
+            cat_client.list_categories, Access.READ,
+            account=account,
+            store_id=store_id,
+        )
         return format_response(data, response_format)
 
     @mcp.tool(
@@ -52,9 +60,15 @@ def register(mcp, bridge) -> None:
                 ),
             ),
         ],
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Replace the categories on an item (mail / event / task)."""
         data = await bridge.call(
-            cat_client.set_category, entry_id=entry_id, categories=categories
+            cat_client.set_category, Access.READ_WRITE,
+            account=account,
+            store_id=store_id,
+            entry_id=entry_id,
+            categories=categories,
         )
         return format_response(data, "json")

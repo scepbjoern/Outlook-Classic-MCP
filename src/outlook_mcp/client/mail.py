@@ -9,6 +9,7 @@ from html import escape as _html_escape
 from typing import Any
 
 from outlook_mcp.client.folders import _safe_get, get_item_by_id, resolve_folder
+from outlook_mcp.client.mailbox import Mailbox
 from outlook_mcp.constants import (
     IMPORTANCE_MAP,
     OL_CLASS_MAIL,
@@ -17,6 +18,7 @@ from outlook_mcp.constants import (
     OL_FORMAT_PLAIN,
     OL_IMPORTANCE_NORMAL,
     OL_FOLDER_DRAFTS,
+    OL_FOLDER_SENT,
     OL_MAIL_ITEM,
 )
 from outlook_mcp.errors import OutlookError
@@ -35,6 +37,7 @@ SMTP_PROPTAG = "http://schemas.microsoft.com/mapi/proptag/0x5D02001F"
 
 # OlInspectorClose.olSave
 OL_INSPECTOR_SAVE = 0
+MAIL_CLASSES = (OL_CLASS_MAIL, OL_CLASS_MEETING_REQUEST)
 
 
 def split_search_words(query: str) -> tuple[str, list[str]]:
@@ -130,8 +133,8 @@ def _mail_full(
 
 
 def list_mails(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     folder: str | None = "inbox",
     limit: int = 25,
@@ -141,7 +144,7 @@ def list_mails(
     until: str | None = None,
     from_address: str | None = None,
 ) -> dict[str, Any]:
-    f = resolve_folder(namespace, folder)
+    f = resolve_folder(mailbox, folder)
     items = f.Items
     items.Sort("[ReceivedTime]", True)
 
@@ -165,8 +168,9 @@ def list_mails(
     skipped = 0
     for item in items:
         cls = _safe_get(item, "Class")
-        if cls not in (OL_CLASS_MAIL, OL_CLASS_MEETING_REQUEST):
+        if cls not in MAIL_CLASSES:
             continue
+        mailbox.require_store(item.Parent)
         if from_lower:
             sender = (_safe_get(item, "SenderEmailAddress") or "").lower()
             if from_lower not in sender:
@@ -174,12 +178,13 @@ def list_mails(
         if skipped < offset:
             skipped += 1
             continue
-        results.append(_mail_summary(item))
+        results.append({**_mail_summary(item), "store_id": mailbox.store_id})
         if len(results) >= limit:
             break
 
     return {
         "folder": f.Name,
+        "store_id": mailbox.store_id,
         "count": len(results),
         "offset": offset,
         "limit": limit,
@@ -190,15 +195,15 @@ def list_mails(
 
 
 def search_mails(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     query: str,
     folder: str | None = "inbox",
     limit: int = 25,
     scope: str = "subject_body",
 ) -> dict[str, Any]:
-    f = resolve_folder(namespace, folder)
+    f = resolve_folder(mailbox, folder)
     items = f.Items
     items.Sort("[ReceivedTime]", True)
 
@@ -231,13 +236,14 @@ def search_mails(
     results: list[dict[str, Any]] = []
     for item in filtered:
         cls = _safe_get(item, "Class")
-        if cls not in (OL_CLASS_MAIL, OL_CLASS_MEETING_REQUEST):
+        if cls not in MAIL_CLASSES:
             continue
+        mailbox.require_store(item.Parent)
         if remaining:
             haystack = _search_haystack(item, scope)
             if not all(word in haystack for word in remaining):
                 continue
-        results.append(_mail_summary(item))
+        results.append({**_mail_summary(item), "store_id": mailbox.store_id})
         if len(results) >= limit:
             break
 
@@ -245,52 +251,40 @@ def search_mails(
         "query": query,
         "scope": scope,
         "folder": f.Name,
+        "store_id": mailbox.store_id,
         "count": len(results),
         "items": results,
     }
 
 
 def get_mail(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     entry_id: str,
     include_body: bool = True,
     include_html: bool = False,
     max_body_chars: int = 10000,
 ) -> dict[str, Any]:
-    return _mail_full(
-        get_item_by_id(namespace, entry_id),
+    result = _mail_full(
+        get_item_by_id(namespace, mailbox, entry_id, *MAIL_CLASSES),
         include_body=include_body,
         include_html=include_html,
         max_body_chars=max_body_chars,
     )
+    return {**result, "store_id": mailbox.store_id}
 
 
-def find_account(outlook: Any, account: str) -> Any:
-    """Return the Outlook Account whose SMTP address or display name matches.
-
-    Matching is case-insensitive. Raises OutlookError listing the available
-    accounts if nothing matches.
-    """
-    wanted = account.strip().lower()
-    accounts = outlook.Session.Accounts
-    available: list[str] = []
-    for i in range(1, accounts.Count + 1):
-        acc = accounts.Item(i)
-        smtp = str(_safe_get(acc, "SmtpAddress", "") or "")
-        display = str(_safe_get(acc, "DisplayName", "") or "")
-        available.append(smtp or display)
-        if wanted in (smtp.lower(), display.lower()):
-            return acc
-    raise OutlookError(
-        f"Account '{account}' not found. Available accounts: {', '.join(available) or 'none'}"
-    )
+def _send_from(mailbox: Mailbox, message: Any) -> None:
+    mailbox.bind_sender(message)
+    message.SaveSentMessageFolder = mailbox.default_folder(OL_FOLDER_SENT)
+    mailbox.require_store(message.SaveSentMessageFolder)
+    message.Send()
 
 
 def send_mail(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     to: list[str],
     subject: str,
@@ -301,18 +295,13 @@ def send_mail(
     attachments: list[str] | None = None,
     importance: str = "normal",
     save_only: bool = False,
-    account: str | None = None,
     signature: bool = False,
 ) -> dict[str, Any]:
-    if account:
-        acc = find_account(outlook, account)
-        # Create the item inside the account's own Drafts folder so that a
-        # saved draft lands in that mailbox, not in the default profile's.
-        drafts = acc.DeliveryStore.GetDefaultFolder(OL_FOLDER_DRAFTS)
-        mail = drafts.Items.Add(OL_MAIL_ITEM)
-        mail.SendUsingAccount = acc
-    else:
-        mail = outlook.CreateItem(OL_MAIL_ITEM)
+    mailbox.require_smtp_recipients(to + (cc or []) + (bcc or []))
+    drafts = mailbox.default_folder(OL_FOLDER_DRAFTS)
+    mail = drafts.Items.Add(OL_MAIL_ITEM)
+    mailbox.require_store(mail.Parent)
+    mailbox.bind_sender(mail)
     mail.To = "; ".join(to)
     if cc:
         mail.CC = "; ".join(cc)
@@ -354,22 +343,24 @@ def send_mail(
         # fails with E_INVALIDARG (0x80070057, "parameter is incorrect").
         # Save, close the inspector, then reload the item fresh from its store.
         mail.Save()
-        entry_id, store_id = mail.EntryID, mail.Parent.StoreID
+        entry_id = mail.EntryID
         inspector.Close(OL_INSPECTOR_SAVE)
         inspector = None
-        mail = get_item_by_id(namespace, entry_id, store_id)
+        mail = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_MAIL)
 
     if save_only:
         mail.Save()
         return {
             "status": "saved_to_drafts",
             "entry_id": mail.EntryID,
+            "store_id": mailbox.store_id,
             "subject": mail.Subject,
         }
 
-    mail.Send()
+    _send_from(mailbox, mail)
     return {
         "status": "sent",
+        "store_id": mailbox.store_id,
         "to": to,
         "cc": cc or [],
         "bcc": bcc or [],
@@ -378,8 +369,8 @@ def send_mail(
 
 
 def reply_mail(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     entry_id: str,
     body: str,
@@ -387,7 +378,7 @@ def reply_mail(
     html: bool = False,
     attachments: list[str] | None = None,
 ) -> dict[str, Any]:
-    original = get_item_by_id(namespace, entry_id)
+    original = get_item_by_id(namespace, mailbox, entry_id, *MAIL_CLASSES)
     reply = original.ReplyAll() if reply_all else original.Reply()
     if html:
         reply.BodyFormat = OL_FORMAT_HTML
@@ -402,18 +393,19 @@ def reply_mail(
     # error. Surfacing that as a failure causes upstream AI agents to retry
     # and send duplicates, even though the original Send() succeeded.
     reply_subject = reply.Subject
-    reply.Send()
+    _send_from(mailbox, reply)
     return {
         "status": "sent",
         "reply_all": reply_all,
         "in_reply_to": entry_id,
+        "store_id": mailbox.store_id,
         "subject": reply_subject,
     }
 
 
 def forward_mail(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     entry_id: str,
     to: list[str],
@@ -421,7 +413,8 @@ def forward_mail(
     cc: list[str] | None = None,
     html: bool = False,
 ) -> dict[str, Any]:
-    original = get_item_by_id(namespace, entry_id)
+    mailbox.require_smtp_recipients(to + (cc or []))
+    original = get_item_by_id(namespace, mailbox, entry_id, *MAIL_CLASSES)
     fwd = original.Forward()
     fwd.To = "; ".join(to)
     if cc:
@@ -438,33 +431,33 @@ def forward_mail(
     # error. Surfacing that as a failure causes upstream AI agents to retry
     # and send duplicates, even though the original Send() succeeded.
     fwd_subject = fwd.Subject
-    fwd.Send()
-    return {"status": "sent", "forwarded": entry_id, "to": to, "subject": fwd_subject}
+    _send_from(mailbox, fwd)
+    return {"status": "sent", "forwarded": entry_id, "to": to, "subject": fwd_subject, "store_id": mailbox.store_id}
 
 
-def move_mail(outlook: Any, namespace: Any, *, entry_id: str, target_folder: str) -> dict[str, Any]:
-    item = get_item_by_id(namespace, entry_id)
-    target = resolve_folder(namespace, target_folder)
+def move_mail(namespace: Any, mailbox: Mailbox, *, entry_id: str, target_folder: str) -> dict[str, Any]:
+    item = get_item_by_id(namespace, mailbox, entry_id, *MAIL_CLASSES)
+    target = resolve_folder(mailbox, target_folder)
     moved = item.Move(target)
-    return {"status": "moved", "new_entry_id": moved.EntryID, "folder": target.Name}
+    return {"status": "moved", "new_entry_id": moved.EntryID, "folder": target.Name, "store_id": mailbox.store_id}
 
 
-def delete_mail(outlook: Any, namespace: Any, *, entry_id: str) -> dict[str, Any]:
-    item = get_item_by_id(namespace, entry_id)
+def delete_mail(namespace: Any, mailbox: Mailbox, *, entry_id: str) -> dict[str, Any]:
+    item = get_item_by_id(namespace, mailbox, entry_id, *MAIL_CLASSES)
     subject = _safe_get(item, "Subject", "")
     item.Delete()
-    return {"status": "deleted", "subject": subject, "entry_id": entry_id}
+    return {"status": "deleted", "subject": subject, "entry_id": entry_id, "store_id": mailbox.store_id}
 
 
 def mark_mail(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     entry_id: str,
     read: bool | None = None,
     flagged: bool | None = None,
 ) -> dict[str, Any]:
-    item = get_item_by_id(namespace, entry_id)
+    item = get_item_by_id(namespace, mailbox, entry_id, *MAIL_CLASSES)
     if read is not None:
         item.UnRead = not read
     if flagged is not None:
@@ -473,20 +466,21 @@ def mark_mail(
     return {
         "status": "updated",
         "entry_id": entry_id,
+        "store_id": mailbox.store_id,
         "unread": bool(item.UnRead),
         "flagged": item.FlagStatus == 2,
     }
 
 
 def save_attachments(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     entry_id: str,
     output_dir: str,
     attachment_index: int | None = None,
 ) -> dict[str, Any]:
-    item = get_item_by_id(namespace, entry_id)
+    item = get_item_by_id(namespace, mailbox, entry_id, *MAIL_CLASSES)
     out_dir = validate_output_dir(output_dir)
     saved: list[str] = []
     attachments = list(item.Attachments)

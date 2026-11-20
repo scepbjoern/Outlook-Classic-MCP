@@ -70,7 +70,23 @@ def test_discovery_and_calls_across_restarts(tmp_path):
     asyncio.run(exercise())
 
 
-@pytest.mark.parametrize("contents", [None, '{"tools":{"disabled_tool":[]}}'], ids=["missing", "invalid"])
+def test_registered_tool_rejects_forbidden_store_over_stdio(tmp_path):
+    config = tmp_path / "outlook-classic-mcp" / "config.json"
+    config.parent.mkdir()
+    config.write_text('{"version":2,"accounts":{"read":["b@example.test"]}}', encoding="utf-8")
+
+    async def exercise():
+        async with session_at(tmp_path) as session:
+            assert "outlook_list_events" in {tool.name for tool in (await session.list_tools()).tools}
+            result = await session.call_tool("outlook_list_events", {"store_id": "store-a"})
+            assert result.isError and "does not grant read" in result.content[0].text
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("contents", [
+    None, '{"tools":{"disabled_tool":[]}}', '{"version":2,"accounts":{"write":true}}',
+], ids=["missing", "invalid", "invalid-account-policy"])
 def test_explicit_bad_config_exits_before_bridge(tmp_path, contents):
     path = tmp_path / "policy.json"
     if contents is not None:

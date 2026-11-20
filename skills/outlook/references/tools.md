@@ -1,5 +1,7 @@
 # Tool reference
 
+All mailbox tools accept `account` (exact SMTP address) and `store_id`. Supply either selector in a multi-account profile. Use `outlook_whoami` for authorized selectors and keep each StoreID with its EntryID.
+
 Every `outlook_*` tool, with parameters, defaults, return shape, and notes on chaining. Skim the table of contents, then jump to the tools you need.
 
 ## Contents
@@ -177,7 +179,7 @@ Walk the folder tree under a root.
 
 | Param            | Type    | Default | Notes |
 | ---------------- | ------- | ------- | ----- |
-| `root`           | string  | `null`  | Folder to start from. Default = the default mailbox root. |
+| `root`           | string  | `null`  | Folder to start from. Default = the selected mailbox root. |
 | `max_depth`      | int 1–10| `4`     | How deep to walk. |
 | `response_format`| str     | `markdown` | |
 
@@ -282,7 +284,7 @@ Respond to a meeting invite.
 
 ### `outlook_list_contacts`
 
-List saved contacts from **every contact folder in every store**, sorted by full name within each folder.
+List saved contacts from **contact folders in the selected store**, sorted by full name within each folder.
 
 | Param            | Type     | Default | Notes |
 | ---------------- | -------- | ------- | ----- |
@@ -313,7 +315,7 @@ Full contact record (saved contacts only — needs an `entry_id`). Returns the s
 
 ### `outlook_resolve_name`
 
-Resolve a display name, alias, or address to its SMTP address — same mechanism as typing a name in To: and pressing Ctrl+K. Use before sending when you only know a person's name.
+In a single-account, single-store profile, resolve a display name, alias, or address to its SMTP address — same mechanism as typing a name in To: and pressing Ctrl+K. Use before sending when you only know a person's name.
 
 | Param  | Type   | Default | Notes |
 | ------ | ------ | ------- | ----- |
@@ -363,7 +365,7 @@ Marks the task 100% complete. Returns `{ status: "completed", entry_id }`.
 
 ### `outlook_list_categories`
 
-Returns the color categories defined in the user's Outlook profile: `{ count, items: [{name, color}, ...] }`. Categories are profile-wide, not per-folder.
+Returns the color categories defined in the user's Outlook profile: `{ count, items: [{name, color}, ...] }`. The selected delivery store supplies the category list. Secondary non-Exchange providers can expose the primary list, so the server restricts these providers to single-account, single-store profiles.
 
 ### `outlook_set_category`
 

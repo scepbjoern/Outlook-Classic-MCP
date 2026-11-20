@@ -47,6 +47,7 @@
 "use strict";
 const $ = id => document.getElementById(id);
 let contacts = [];
+let storeId;
 let searchTimer = 0;
 let searchSeq = 0;
 
@@ -65,6 +66,8 @@ MCPApp.onToolResult(r => {
 });
 
 function load(d) {
+  storeId = d.store_id;
+  ++searchSeq;
   contacts = d.items;
   $("error").innerHTML = "";
   $("count").textContent = contacts.length + (d.has_more ? "+" : "");
@@ -121,8 +124,8 @@ async function doSearch() {
   showStatus($("status"), "Searching…");
   try {
     const r = q
-      ? await MCPApp.callTool("outlook_search_contacts", { query: q, limit: 25 })
-      : await MCPApp.callTool("outlook_list_contacts", { limit: 50 });
+      ? await MCPApp.callTool("outlook_search_contacts", { query: q, limit: 25, store_id: storeId })
+      : await MCPApp.callTool("outlook_list_contacts", { limit: 50, store_id: storeId });
     if (seq !== searchSeq) return;   // a newer search superseded this one
     const d = MCPApp.data(r);
     if (d && Array.isArray(d.items)) load(d);

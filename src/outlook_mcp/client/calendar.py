@@ -6,8 +6,10 @@ import datetime as dt
 from typing import Any
 
 from outlook_mcp.client.folders import _safe_get, get_item_by_id
+from outlook_mcp.client.mailbox import Mailbox
 from outlook_mcp.constants import (
     OL_APPOINTMENT_ITEM,
+    OL_CLASS_APPOINTMENT,
     OL_FOLDER_CALENDAR,
     OL_MEETING,
     OL_MEETING_ACCEPTED,
@@ -79,15 +81,15 @@ def _apply_recurrence(appt: Any, spec: Recurrence) -> None:
 
 
 def list_events(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     start: str | None = None,
     end: str | None = None,
     limit: int = 50,
     include_recurrences: bool = True,
 ) -> dict[str, Any]:
-    cal = namespace.GetDefaultFolder(OL_FOLDER_CALENDAR)
+    cal = mailbox.default_folder(OL_FOLDER_CALENDAR)
     items = cal.Items
     # Outlook requires the collection sorted ascending by [Start] BEFORE
     # IncludeRecurrences is set, or recurring series expand incorrectly.
@@ -108,7 +110,8 @@ def list_events(
 
     results: list[dict[str, Any]] = []
     for ev in filtered:
-        results.append(_event_summary(ev))
+        mailbox.require_store(ev.Parent)
+        results.append({**_event_summary(ev), "store_id": mailbox.store_id})
         if len(results) >= limit:
             break
 
@@ -116,17 +119,19 @@ def list_events(
         "start": start_dt.isoformat(),
         "end": end_dt.isoformat(),
         "count": len(results),
+        "store_id": mailbox.store_id,
         "items": results,
     }
 
 
-def get_event(outlook: Any, namespace: Any, *, entry_id: str) -> dict[str, Any]:
-    return _event_full(get_item_by_id(namespace, entry_id))
+def get_event(namespace: Any, mailbox: Mailbox, *, entry_id: str) -> dict[str, Any]:
+    event = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_APPOINTMENT)
+    return {**_event_full(event), "store_id": mailbox.store_id}
 
 
 def create_event(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     subject: str,
     start: str,
@@ -138,13 +143,17 @@ def create_event(
     reminder_minutes: int | None = 15,
     recurrence: Recurrence | None = None,
 ) -> dict[str, Any]:
-    appt = outlook.CreateItem(OL_APPOINTMENT_ITEM)
+    mailbox.require_smtp_recipients(attendees or [])
+    start_time = to_com(from_iso(start))
+    end_time = to_com(from_iso(end))
+    appt = mailbox.default_folder(OL_FOLDER_CALENDAR).Items.Add(OL_APPOINTMENT_ITEM)
+    mailbox.require_store(appt.Parent)
     appt.Subject = subject
     # to_com, not the bare datetime: pywin32 would read a naive value
     # as local and hand Outlook its UTC clock, shifting the event one
     # offset early.
-    appt.Start = to_com(from_iso(start))
-    appt.End = to_com(from_iso(end))
+    appt.Start = start_time
+    appt.End = end_time
     if location:
         appt.Location = location
     if body:
@@ -154,27 +163,32 @@ def create_event(
         appt.ReminderMinutesBeforeStart = reminder_minutes
     if attendees:
         appt.MeetingStatus = OL_MEETING
+        mailbox.bind_sender(appt)
         for addr in attendees:
             rec = appt.Recipients.Add(addr)
             rec.Type = OL_TO
-        appt.Recipients.ResolveAll()
+        if not appt.Recipients.ResolveAll():
+            raise OutlookError("Outlook could not resolve all meeting attendees.")
     if recurrence is not None:
         _apply_recurrence(appt, recurrence)
     appt.Save()
-    if attendees:
-        appt.Send()
-    return {
+    result = {
         "status": "created",
         "entry_id": appt.EntryID,
+        "store_id": mailbox.store_id,
         "subject": appt.Subject,
         "start": to_iso(appt.Start),
         "end": to_iso(appt.End),
     }
+    if attendees:
+        mailbox.bind_sender(appt)
+        appt.Send()
+    return result
 
 
 def update_event(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     entry_id: str,
     subject: str | None = None,
@@ -183,37 +197,38 @@ def update_event(
     location: str | None = None,
     body: str | None = None,
 ) -> dict[str, Any]:
-    ev = get_item_by_id(namespace, entry_id)
+    ev = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_APPOINTMENT)
+    start_time = to_com(from_iso(start))
+    end_time = to_com(from_iso(end))
     if subject is not None:
         ev.Subject = subject
     if start is not None:
-        ev.Start = to_com(from_iso(start))
+        ev.Start = start_time
     if end is not None:
-        ev.End = to_com(from_iso(end))
+        ev.End = end_time
     if location is not None:
         ev.Location = location
     if body is not None:
         ev.Body = body
     ev.Save()
-    return {"status": "updated", "entry_id": entry_id}
+    return {"status": "updated", "entry_id": entry_id, "store_id": mailbox.store_id}
 
 
-def delete_event(outlook: Any, namespace: Any, *, entry_id: str) -> dict[str, Any]:
-    ev = get_item_by_id(namespace, entry_id)
+def delete_event(namespace: Any, mailbox: Mailbox, *, entry_id: str) -> dict[str, Any]:
+    ev = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_APPOINTMENT)
     subject = _safe_get(ev, "Subject", "")
     ev.Delete()
-    return {"status": "deleted", "subject": subject, "entry_id": entry_id}
+    return {"status": "deleted", "subject": subject, "entry_id": entry_id, "store_id": mailbox.store_id}
 
 
 def respond_event(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     entry_id: str,
     response: str,
     send_response: bool = True,
 ) -> dict[str, Any]:
-    ev = get_item_by_id(namespace, entry_id)
     code = {
         "accept": OL_MEETING_ACCEPTED,
         "tentative": OL_MEETING_TENTATIVE,
@@ -221,7 +236,11 @@ def respond_event(
     }.get(response.lower())
     if code is None:
         raise OutlookError("response must be one of: 'accept', 'tentative', 'decline'.")
-    resp = ev.Respond(code, True)
-    if send_response and resp is not None:
+    ev = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_APPOINTMENT)
+    resp = ev.Respond(code, True, False)
+    if send_response:
+        if resp is None:
+            raise OutlookError("Outlook updated the meeting without returning a response to send.")
+        mailbox.bind_sender(resp)
         resp.Send()
-    return {"status": "responded", "response": response}
+    return {"status": "responded", "response": response, "store_id": mailbox.store_id}

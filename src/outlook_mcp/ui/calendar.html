@@ -57,7 +57,7 @@ const $ = id => document.getElementById(id);
 let events = [];
 let toolArgs = {};
 let openId = null;           // expanded event
-const detailCache = {};      // entry_id -> detail dict
+const detailCache = new Map();      // entry_id -> detail dict
 
 $("refreshBtn").innerHTML = icon("refresh", 15);
 
@@ -75,6 +75,9 @@ MCPApp.onToolResult(r => {
 });
 
 function load(d) {
+  toolArgs = { ...toolArgs, store_id: d.store_id };
+  openId = null;
+  detailCache.clear();
   events = d.items.slice().sort((a, b) => String(a.start).localeCompare(String(b.start)));
   $("error").innerHTML = "";
   const fmtD = iso => { const x = new Date(iso); return isNaN(x) ? "" : MONTHS[x.getMonth()] + " " + x.getDate(); };
@@ -135,7 +138,7 @@ function render() {
 }
 
 function renderDetails(ev) {
-  const d = detailCache[ev.entry_id];
+  const d = detailCache.get(ev);
   if (!d) return '<div class="details"><div class="spinner"></div></div>';
   const atts = (d.attendees || []).map(a =>
     '<div class="att">' + avatarHtml(a.name, 20) + " " + esc(a.name || a.address || "") +
@@ -159,13 +162,14 @@ $("agenda").addEventListener("click", async ev => {
   if (openId === id) { openId = null; render(); return; }
   openId = id;
   render();
-  if (!detailCache[id]) {
+  const event = events.find(e => e.entry_id === id);
+  if (event && !detailCache.has(event)) {
     try {
-      const r = await MCPApp.callTool("outlook_get_event", { entry_id: id });
+      const r = await MCPApp.callTool("outlook_get_event", { entry_id: id, store_id: event.store_id });
       const d = MCPApp.data(r);
-      if (d) detailCache[id] = d;
+      if (d && events.includes(event)) detailCache.set(event, d);
     } catch (e) {
-      detailCache[id] = { body: "Could not load details: " + e.message };
+      if (events.includes(event)) detailCache.set(event, { body: "Could not load details: " + e.message });
     }
     if (openId === id) render();
   }

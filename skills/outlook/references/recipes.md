@@ -281,16 +281,12 @@ outlook_get_out_of_office()
 
 If `status: "on"`, surface that to the user. If they want to **change** OOO state, you cannot — direct them to Outlook → File → Automatic Replies.
 
-## 19. Multi-mailbox: act on a shared mailbox
-
-When the user has more than one Outlook account or store (e.g. a personal mailbox plus a shared "Support" mailbox), the well-known names (`inbox`, `sent`, etc.) only resolve against the **default** mailbox. To target another store, qualify the path with the store display name:
+## 19. Select a second mailbox
 
 ```
-1. outlook_whoami()                           # confirm what's bound
-2. outlook_list_folders(root=null, max_depth=2)
-   # the top-level entries are store names; pick the store you want
-3. outlook_list_mails(folder="Support Mailbox/Inbox", limit=25)
-   # store name + path
+1. outlook_whoami()
+2. outlook_list_folders(account="beta@example.test", max_depth=2)
+3. outlook_list_mails(account="beta@example.test", folder="inbox", limit=25)
 ```
 
-The store display name is whatever Outlook shows in the folder pane (e.g. `"Mailbox - support@example.com"`, `"Online Archive - you@example.com"`, `"Personal Folders"`). Match it case-insensitively.
+Use the returned StoreID together with the EntryID for follow-up calls.

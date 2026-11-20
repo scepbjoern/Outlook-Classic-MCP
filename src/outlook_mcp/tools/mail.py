@@ -9,6 +9,8 @@ from pydantic import Field
 
 from outlook_mcp.client import mail as mail_client
 from outlook_mcp.ui import ui_meta, ui_result
+from outlook_mcp.client.mailbox import Access
+from outlook_mcp.schemas import AccountSelector, StoreSelector
 from outlook_mcp.utils.formatting import format_response
 from outlook_mcp.utils.safety import safe_call
 
@@ -44,10 +46,14 @@ def register(mcp, bridge) -> None:
         until: Annotated[Optional[str], Field(description="ISO-8601 upper bound on ReceivedTime.")] = None,
         from_address: Annotated[Optional[str], Field(description="Substring match on sender email.")] = None,
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> CallToolResult:
         """List mail items from a folder, newest first."""
         data = await bridge.call(
-            mail_client.list_mails,
+            mail_client.list_mails, Access.READ,
+            account=account,
+            store_id=store_id,
             folder=folder,
             limit=limit,
             offset=offset,
@@ -85,10 +91,14 @@ def register(mcp, bridge) -> None:
         ] = "subject_body",
         limit: Annotated[int, Field(ge=1, le=100)] = 25,
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> CallToolResult:
         """Search a mail folder by subject, body, or sender."""
         data = await bridge.call(
-            mail_client.search_mails,
+            mail_client.search_mails, Access.READ,
+            account=account,
+            store_id=store_id,
             query=query,
             folder=folder,
             limit=limit,
@@ -130,6 +140,8 @@ def register(mcp, bridge) -> None:
             ),
         ] = 10000,
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> CallToolResult:
         """Fetch body, headers, and attachment list for one mail item.
 
@@ -137,7 +149,9 @@ def register(mcp, bridge) -> None:
         max_body_chars to read more.
         """
         data = await bridge.call(
-            mail_client.get_mail,
+            mail_client.get_mail, Access.READ,
+            account=account,
+            store_id=store_id,
             entry_id=entry_id,
             include_body=include_body,
             include_html=include_html,
@@ -166,17 +180,6 @@ def register(mcp, bridge) -> None:
         attachments: Annotated[Optional[list[str]], Field(description="Absolute paths to local files.")] = None,
         importance: Annotated[str, Field(description="One of: 'low', 'normal', 'high'.")] = "normal",
         save_only: Annotated[bool, Field(description="If true, save to Drafts instead of sending.")] = False,
-        account: Annotated[
-            Optional[str],
-            Field(
-                description=(
-                    "Optional sender account (SMTP address or display name, e.g. "
-                    "'info@example.com'). The mail is sent from this account and, "
-                    "with save_only=True, saved to this account's Drafts folder. "
-                    "Defaults to the profile's default account."
-                )
-            ),
-        ] = None,
         signature: Annotated[
             bool,
             Field(
@@ -187,10 +190,14 @@ def register(mcp, bridge) -> None:
                 )
             ),
         ] = False,
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Compose and send a new mail. Set save_only=True to save to Drafts."""
         data = await bridge.call(
-            mail_client.send_mail,
+            mail_client.send_mail, Access.WRITE,
+            account=account,
+            store_id=store_id,
             to=to,
             subject=subject,
             body=body,
@@ -200,7 +207,6 @@ def register(mcp, bridge) -> None:
             attachments=attachments,
             importance=importance,
             save_only=save_only,
-            account=account,
             signature=signature,
         )
         return format_response(data, "json")
@@ -222,10 +228,14 @@ def register(mcp, bridge) -> None:
         reply_all: Annotated[bool, Field(description="Reply to all recipients.")] = False,
         html: Annotated[bool, Field(description="Treat body as HTML.")] = False,
         attachments: Annotated[Optional[list[str]], Field(description="Files to attach.")] = None,
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Reply (or reply-all) to an existing mail."""
         data = await bridge.call(
-            mail_client.reply_mail,
+            mail_client.reply_mail, Access.READ_WRITE,
+            account=account,
+            store_id=store_id,
             entry_id=entry_id,
             body=body,
             reply_all=reply_all,
@@ -251,10 +261,14 @@ def register(mcp, bridge) -> None:
         body: Annotated[str, Field(description="Optional note above the forwarded mail.")] = "",
         cc: Annotated[Optional[list[str]], Field(description="CC recipients.")] = None,
         html: Annotated[bool, Field(description="Treat body as HTML.")] = False,
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Forward an existing mail with an optional added note."""
         data = await bridge.call(
-            mail_client.forward_mail,
+            mail_client.forward_mail, Access.READ_WRITE,
+            account=account,
+            store_id=store_id,
             entry_id=entry_id,
             to=to,
             body=body,
@@ -277,10 +291,16 @@ def register(mcp, bridge) -> None:
     async def outlook_move_mail(
         entry_id: Annotated[str, Field(description="EntryID of the mail to move.")],
         target_folder: Annotated[str, Field(description="Destination folder.")],
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Move a mail to another folder. Returns the new EntryID."""
         data = await bridge.call(
-            mail_client.move_mail, entry_id=entry_id, target_folder=target_folder
+            mail_client.move_mail, Access.READ_WRITE,
+            account=account,
+            store_id=store_id,
+            entry_id=entry_id,
+            target_folder=target_folder,
         )
         return format_response(data, "json")
 
@@ -297,9 +317,16 @@ def register(mcp, bridge) -> None:
     @safe_call
     async def outlook_delete_mail(
         entry_id: Annotated[str, Field(description="EntryID of the mail to delete.")],
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Delete a mail (Outlook moves it to Deleted Items)."""
-        data = await bridge.call(mail_client.delete_mail, entry_id=entry_id)
+        data = await bridge.call(
+            mail_client.delete_mail, Access.READ_WRITE,
+            account=account,
+            store_id=store_id,
+            entry_id=entry_id,
+        )
         return format_response(data, "json")
 
     @mcp.tool(
@@ -317,10 +344,17 @@ def register(mcp, bridge) -> None:
         entry_id: Annotated[str, Field(description="EntryID of the mail.")],
         read: Annotated[Optional[bool], Field(description="True=mark read, False=unread, None=no change.")] = None,
         flagged: Annotated[Optional[bool], Field(description="True=flag for follow-up, False=clear flag.")] = None,
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Toggle read state and/or follow-up flag on a mail."""
         data = await bridge.call(
-            mail_client.mark_mail, entry_id=entry_id, read=read, flagged=flagged
+            mail_client.mark_mail, Access.READ_WRITE,
+            account=account,
+            store_id=store_id,
+            entry_id=entry_id,
+            read=read,
+            flagged=flagged,
         )
         return format_response(data, "json")
 
@@ -341,10 +375,14 @@ def register(mcp, bridge) -> None:
         attachment_index: Annotated[
             Optional[int], Field(ge=1, description="1-indexed attachment. Omit to save all.")
         ] = None,
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Save one or all attachments from a mail to a local directory."""
         data = await bridge.call(
-            mail_client.save_attachments,
+            mail_client.save_attachments, Access.READ,
+            account=account,
+            store_id=store_id,
             entry_id=entry_id,
             output_dir=output_dir,
             attachment_index=attachment_index,
