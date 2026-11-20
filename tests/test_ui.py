@@ -8,6 +8,7 @@ import re
 import pytest
 
 from outlook_mcp import ui as ui_mod
+from outlook_mcp.config import ToolPolicy
 from outlook_mcp.server import build_server
 
 UI_TOOLS = {
@@ -23,7 +24,8 @@ UI_TOOLS = {
 
 @pytest.fixture(scope="module")
 def server():
-    mcp, _bridge = build_server()
+    # Test the full original inventory independently of local user config.
+    mcp, _bridge = build_server(policy=ToolPolicy())
     return mcp
 
 

@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 
+from outlook_mcp.config import ToolConfigError
 from outlook_mcp.server import build_server
 
 
@@ -18,7 +19,11 @@ def main() -> None:
     )
     log = logging.getLogger("outlook_mcp")
 
-    mcp, bridge = build_server()
+    try:
+        mcp, bridge = build_server()
+    except ToolConfigError as exc:
+        log.error("Invalid Outlook MCP configuration: %s", exc)
+        sys.exit(2)
     log.info("Starting outlook_mcp (stdio transport)")
 
     try:
