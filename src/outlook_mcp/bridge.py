@@ -129,7 +129,7 @@ class OutlookBridge:
 
         Uses dynamic (late-bound) Dispatch on purpose: pywin32's gencache
         caches a typed proxy whose internal references carry thread
-        affinity. When install.bat pre-warms the typelib in one process
+        affinity. When another program pre-warms the typelib in one process
         and the bridge later runs in a new process on a different STA
         thread, calls into that cached wrapper raise RPC_E_WRONG_THREAD
         (0x8001010E). The dynamic wrapper is pure IDispatch::Invoke —
