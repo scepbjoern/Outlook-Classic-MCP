@@ -97,7 +97,7 @@ async function act(kind) {
       if (!confirmDelete) { confirmDelete = true; render(); return; }
       await MCPApp.callTool("outlook_delete_mail", { store_id: mail.store_id, entry_id: mail.entry_id });
       if (mail !== selected) return;
-      MCPApp.updateModelContext("User deleted the mail “" + (mail.subject || "(no subject)") + "” via the reader view.");
+      MCPApp.updateModelContext("User deleted the mail via the reader view.");
       $("mail").innerHTML = '<div class="empty"><div class="big">🗑️</div>Mail deleted.</div>';
       return;
     }

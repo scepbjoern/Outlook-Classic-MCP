@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ntpath
 import os
 import re
 from html import escape as _html_escape
@@ -23,12 +22,8 @@ from outlook_mcp.constants import (
 )
 from outlook_mcp.errors import OutlookError
 from outlook_mcp.utils.formatting import from_iso, to_iso, truncate
-from outlook_mcp.utils.paths import validate_attachment_path, validate_output_dir
+from outlook_mcp.utils.paths import validate_attachment_path, validate_filename, validate_output_dir
 from outlook_mcp.utils.safety import safe_dasl
-
-WINDOWS_RESERVED_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL", "CLOCK$"} | {
-    f"COM{i}" for i in range(1, 10)
-} | {f"LPT{i}" for i in range(1, 10)}
 
 # PR_SENDER_SMTP_ADDRESS — unlike urn:schemas:httpmail:fromemail, this
 # holds the real SMTP address even for Exchange senders (whose fromemail
@@ -493,42 +488,14 @@ def save_attachments(
         attachments = [attachments[attachment_index - 1]]
 
     for att in attachments:
-        # Sender-controlled filename. Reject anything containing path
-        # separators, drive-letter prefixes, dot-only names, or reserved
-        # Windows device names. These are signals of a path-traversal
-        # attempt by the sender, not legitimate attachments.
-        raw = att.FileName or ""
-        if not raw or raw in (".", ".."):
-            raise OutlookError(f"Attachment has invalid filename: {raw!r}")
-        if "\\" in raw or "/" in raw:
-            raise OutlookError(
-                f"Attachment filename contains path separators "
-                f"(rejected for safety): {raw!r}"
-            )
-        if ":" in raw:
-            raise OutlookError(
-                f"Attachment filename contains colon "
-                f"(rejected for safety): {raw!r}"
-            )
-        # Defense in depth: basename should be a no-op after the checks
-        # above, but use it anyway in case ntpath sees something we missed.
-        safe_name = ntpath.basename(raw)
-        if safe_name != raw:
-            raise OutlookError(
-                f"Attachment filename did not normalize cleanly: {raw!r}"
-            )
-        stem = safe_name.lstrip(".").split(".", 1)[0].upper()
-        if stem in WINDOWS_RESERVED_DEVICE_NAMES:
-            raise OutlookError(
-                f"Attachment has reserved Windows device name: {safe_name!r}"
-            )
+        safe_name = validate_filename(att.FileName or "")
 
         # Mails often carry several attachments with the same name (e.g.
         # multiple inline "image.png") — uniquify instead of overwriting.
         target = os.path.join(out_dir, safe_name)
         base, ext = os.path.splitext(safe_name)
         counter = 1
-        while os.path.exists(target):
+        while os.path.lexists(target):
             target = os.path.join(out_dir, f"{base} ({counter}){ext}")
             counter += 1
         att.SaveAsFile(target)

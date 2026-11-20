@@ -109,13 +109,21 @@ const MCPApp = (() => {
   const handlers = { toolResult: [], toolInput: [], hostContext: [] };
   let hostContext = null;
   let embedded = true;
+  // Opaque sandbox origins are reported as "null" and require a wildcard target.
+  let hostOrigin;
 
-  function post(msg) { try { window.parent.postMessage(msg, "*"); } catch (e) {} }
+  function post(msg) {
+    const target = hostOrigin === undefined || hostOrigin === "null" ? "*" : hostOrigin;
+    try { window.parent.postMessage(msg, target); } catch (e) {}
+  }
   function notify(method, params) { post({ jsonrpc: "2.0", method, params: params || {} }); }
   function request(method, params) {
+    if (method !== "ui/initialize" && hostOrigin === undefined) {
+      return Promise.reject(new Error("Host handshake incomplete"));
+    }
     return new Promise((resolve, reject) => {
       const id = nextId++;
-      pending.set(id, { resolve, reject });
+      pending.set(id, { resolve, reject, method });
       post({ jsonrpc: "2.0", id, method, params: params || {} });
     });
   }
@@ -129,24 +137,30 @@ const MCPApp = (() => {
   function emit(kind, payload) { for (const fn of handlers[kind]) { try { fn(payload); } catch (e) { console.error(e); } } }
 
   window.addEventListener("message", (ev) => {
+    if (window.parent === window || ev.source !== window.parent) return;
+    if (hostOrigin !== undefined && ev.origin !== hostOrigin) return;
     const m = ev.data;
     if (!m || m.jsonrpc !== "2.0") return;
     if (m.id !== undefined && m.method === undefined) {       // response to one of our requests
       const p = pending.get(m.id);
-      if (!p) return;
+      if (!p || (!("result" in m) && !m.error)) return;
+      if (p.method === "ui/initialize" && !m.error) hostOrigin = ev.origin;
       pending.delete(m.id);
       if (m.error) p.reject(new Error(m.error.message || "host error"));
       else p.resolve(m.result);
       return;
     }
+    if (hostOrigin === undefined) return;
+    if (m.id !== undefined) {
+      post({ jsonrpc: "2.0", id: m.id, error: { code: -32601, message: "method not found" } });
+      return;
+    }
     if (m.method === "ui/notifications/tool-result") emit("toolResult", m.params || {});
     else if (m.method === "ui/notifications/tool-input") emit("toolInput", m.params || {});
     else if (m.method === "ui/notifications/host-context-changed") {
-      hostContext = Object.assign(hostContext || {}, m.params || {});
+      hostContext = { ...hostContext, ...m.params };
       if (m.params && m.params.theme) applyTheme(m.params.theme);
       emit("hostContext", hostContext);
-    } else if (m.id !== undefined) {                          // unknown request from host
-      post({ jsonrpc: "2.0", id: m.id, error: { code: -32601, message: "method not found" } });
     }
   });
 
