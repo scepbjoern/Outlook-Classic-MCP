@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from outlook_mcp.client import calendar
+from outlook_mcp.client.calendar_privacy import native_sensitivity
 from outlook_mcp.errors import OutlookError
 from outlook_mcp.utils.formatting import format_response
 from tests.test_mailbox import make_profile, registered
@@ -24,7 +25,7 @@ def test_create_and_read_each_level(value, label):
     event.Categories = "Privat"
     saved = []
     event.Save.side_effect = lambda: saved.append(event.Sensitivity)
-    call = registered(ns)
+    call = registered(ns, privacy={"default": "full"})
     call("create_event", sensitivity=value, **NEW_EVENT, **STORE)
     assert saved == [value]
 
@@ -45,12 +46,13 @@ def test_update_preserves_private_on_move_and_accepts_explicit_zero(recurring):
     event.Sensitivity = 3  # Synthetic provider default, preserved on create.
     saved = []
     event.Save.side_effect = lambda: saved.append(event.Sensitivity)
-    call = registered(ns)
+    call = registered(ns, privacy={"default": "full"})
     args = {"recurrence": {"type": "weekly", "occurrences": 3}} if recurring else {}
     call("create_event", **NEW_EVENT, **STORE, **args)
     if recurring:
         assert event.GetRecurrencePattern.return_value.Occurrences == 3
         event.RecurrenceState = 1  # Master resolved by EntryID.
+        event.GetRecurrencePattern.return_value.Exceptions.Count = 0
     call("update_event", sensitivity=2, **EXISTING)
     call("update_event", start="2026-11-24T10:00", end="2026-11-24T11:00", **EXISTING)
     detail = call("get_event", **EXISTING)
@@ -65,9 +67,10 @@ def test_series_and_expanded_occurrences_report_their_own_values():
     ns = make_profile()
     items = ns.Stores[1].GetDefaultFolder.return_value.Items
     master = items.Add.return_value
-    call = registered(ns)
+    call = registered(ns, privacy={"default": "full"})
     call("create_event", recurrence={"type": "weekly", "occurrences": 2}, sensitivity=2, **NEW_EVENT, **STORE)
     master.RecurrenceState = 1
+    master.GetRecurrencePattern.return_value.Exceptions.Count = 0
     occurrences = [
         SimpleNamespace(Parent=master.Parent, EntryID=master.EntryID, RecurrenceState=state, Sensitivity=value)
         for state, value in [(2, 2), (3, 1)]  # Regular occurrence and modified exception.
@@ -101,6 +104,5 @@ def test_client_rejects_invalid_sensitivity_before_outlook_access(operation, arg
 
 
 def test_unavailable_or_unknown_sensitivity_is_never_reported_as_normal():
-    for event, code in [(SimpleNamespace(), None), (SimpleNamespace(Sensitivity=9), 9)]:
-        summary = calendar._event_summary(event)
-        assert summary["sensitivity"] == code and summary["sensitivity_label"] == "Unknown"
+    for event in [SimpleNamespace(), SimpleNamespace(Sensitivity=9)]:
+        assert native_sensitivity(event) is None

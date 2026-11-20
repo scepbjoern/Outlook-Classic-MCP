@@ -26,6 +26,20 @@ def safe_dasl(query: str) -> str:
     return query.replace("'", "''").replace('"', '""')
 
 
+def safe_item_call(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Provider exception text and tracebacks may include appointment data."""
+    @functools.wraps(fn)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return await fn(*args, **kwargs)
+        except OutlookError as exc:
+            raise RuntimeError(str(exc)) from None
+        except Exception:
+            logger.warning("Outlook operation failed in %s", fn.__name__)
+            raise RuntimeError("Outlook could not complete the operation. Check Outlook before retrying.") from None
+    return wrapper
+
+
 def safe_call(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Convert ``OutlookError`` / unexpected exceptions to friendly messages.
 

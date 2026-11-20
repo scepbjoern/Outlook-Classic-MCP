@@ -200,9 +200,7 @@ class OutlookBridge:
             ):
                 holder["error"] = exc
                 return
-            logger.warning(
-                "Lost connection to Outlook (%s) — reconnecting", exc
-            )
+            logger.warning("Lost connection to Outlook — reconnecting")
 
         self._reconnecting.set()
         try:

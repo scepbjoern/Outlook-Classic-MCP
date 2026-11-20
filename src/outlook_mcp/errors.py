@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 
+ITEM_NOT_FOUND = "Item not found in the selected store."
+
+
 class OutlookError(Exception):
     """Domain-level error from the Outlook wrapper.
 

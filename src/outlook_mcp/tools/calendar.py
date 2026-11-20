@@ -12,7 +12,7 @@ from outlook_mcp.ui import ui_meta, ui_result
 from outlook_mcp.client.mailbox import Access
 from outlook_mcp.schemas import AccountSelector, EventSensitivity, Recurrence, StoreSelector
 from outlook_mcp.utils.formatting import format_response
-from outlook_mcp.utils.safety import safe_call
+from outlook_mcp.utils.safety import safe_item_call
 
 
 def register(mcp, bridge) -> None:
@@ -28,7 +28,7 @@ def register(mcp, bridge) -> None:
         meta=ui_meta("calendar"),
         structured_output=False,
     )
-    @safe_call
+    @safe_item_call
     async def outlook_list_events(
         start: Annotated[Optional[str], Field(description="ISO-8601 start of range. Defaults to now.")] = None,
         end: Annotated[Optional[str], Field(description="ISO-8601 end of range. Defaults to start+14d.")] = None,
@@ -61,14 +61,14 @@ def register(mcp, bridge) -> None:
         },
         structured_output=False,
     )
-    @safe_call
+    @safe_item_call
     async def outlook_get_event(
         entry_id: Annotated[str, Field(description="EntryID of the event.")],
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
         account: AccountSelector = None,
         store_id: StoreSelector = None,
     ) -> CallToolResult:
-        """Fetch an event with attendees, body, and recurrence info."""
+        """Fetch the event details permitted by the account's calendar privacy policy."""
         data = await bridge.call(
             cal_client.get_event, Access.READ,
             account=account,
@@ -87,7 +87,7 @@ def register(mcp, bridge) -> None:
             "openWorldHint": True,
         },
     )
-    @safe_call
+    @safe_item_call
     async def outlook_create_event(
         subject: Annotated[str, Field(description="Event subject.")],
         start: Annotated[str, Field(description="ISO-8601 start time (e.g. '2026-05-01T14:00:00').")],
@@ -136,7 +136,7 @@ def register(mcp, bridge) -> None:
             "openWorldHint": False,
         },
     )
-    @safe_call
+    @safe_item_call
     async def outlook_update_event(
         entry_id: Annotated[str, Field(description="EntryID of the event.")],
         subject: Annotated[Optional[str], Field()] = None,
@@ -173,7 +173,7 @@ def register(mcp, bridge) -> None:
             "openWorldHint": False,
         },
     )
-    @safe_call
+    @safe_item_call
     async def outlook_delete_event(
         entry_id: Annotated[str, Field(description="EntryID of the event.")],
         account: AccountSelector = None,
@@ -198,7 +198,7 @@ def register(mcp, bridge) -> None:
             "openWorldHint": True,
         },
     )
-    @safe_call
+    @safe_item_call
     async def outlook_respond_event(
         entry_id: Annotated[str, Field(description="EntryID of the meeting.")],
         response: Annotated[str, Field(description="One of: 'accept', 'tentative', 'decline'.")],

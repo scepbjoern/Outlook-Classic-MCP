@@ -5,8 +5,10 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
+from outlook_mcp.client.calendar_privacy import availability, classify_event
 from outlook_mcp.client.folders import _safe_get, get_item_by_id
 from outlook_mcp.client.mailbox import Mailbox
+from outlook_mcp.config import PrivacyMode
 from outlook_mcp.constants import (
     OL_APPOINTMENT_ITEM,
     OL_CLASS_APPOINTMENT,
@@ -21,7 +23,7 @@ from outlook_mcp.constants import (
     OL_RECURS_YEARLY,
     OL_TO,
 )
-from outlook_mcp.errors import OutlookError, is_disconnect_error
+from outlook_mcp.errors import ITEM_NOT_FOUND, OutlookError, is_disconnect_error
 from outlook_mcp.schemas import Recurrence
 from outlook_mcp.utils.formatting import from_iso, to_com, to_iso, truncate
 
@@ -68,9 +70,8 @@ def _require_listed_event_store(ev: Any, mailbox: Mailbox, namespace: Any) -> No
     raise OutlookError("Cannot verify the calendar item belongs to the selected store.")
 
 
-def _event_summary(ev: Any) -> dict[str, Any]:
+def _event_summary(ev: Any, sensitivity: int | None) -> dict[str, Any]:
     recur_state = _safe_get(ev, "RecurrenceState", 0)
-    sensitivity = _safe_get(ev, "Sensitivity")
     return {
         "entry_id": _safe_get(ev, "EntryID"),
         "subject": _safe_get(ev, "Subject", ""),
@@ -86,7 +87,7 @@ def _event_summary(ev: Any) -> dict[str, Any]:
     }
 
 
-def _event_full(ev: Any) -> dict[str, Any]:
+def _event_full(ev: Any, sensitivity: int | None) -> dict[str, Any]:
     attendees = []
     if _safe_get(ev, "Recipients"):
         for r in ev.Recipients:
@@ -99,7 +100,7 @@ def _event_full(ev: Any) -> dict[str, Any]:
                 }
             )
     return {
-        **_event_summary(ev),
+        **_event_summary(ev, sensitivity),
         "body": _safe_get(ev, "Body", ""),
         "attendees": attendees,
         "reminder_minutes": _safe_get(ev, "ReminderMinutesBeforeStart"),
@@ -117,6 +118,16 @@ def _apply_recurrence(appt: Any, spec: Recurrence) -> None:
         pattern.PatternEndDate = to_com(from_iso(spec.end_date))
 
 
+def _event_result(event: Any, mailbox: Mailbox, *, detail: bool = False) -> dict[str, Any] | None:
+    mode, sensitivity = classify_event(event, mailbox.privacy)
+    if mode == PrivacyMode.EXCLUDE:
+        return None
+    if mode == PrivacyMode.BUSY_ONLY:
+        return availability(event)
+    render = _event_full if detail else _event_summary
+    return {**render(event, sensitivity), "store_id": mailbox.store_id}
+
+
 def list_events(
     namespace: Any,
     mailbox: Mailbox,
@@ -131,8 +142,7 @@ def list_events(
     # Outlook requires the collection sorted ascending by [Start] BEFORE
     # IncludeRecurrences is set, or recurring series expand incorrectly.
     items.Sort("[Start]")
-    if include_recurrences:
-        items.IncludeRecurrences = True
+    items.IncludeRecurrences = include_recurrences
 
     start_dt = from_iso(start) or dt.datetime.now()
     end_dt = from_iso(end) or (start_dt + dt.timedelta(days=14))
@@ -148,7 +158,10 @@ def list_events(
     results: list[dict[str, Any]] = []
     for ev in filtered:
         _require_listed_event_store(ev, mailbox, namespace)
-        results.append({**_event_summary(ev), "store_id": mailbox.store_id})
+        row = _event_result(ev, mailbox)
+        if row is None:
+            continue
+        results.append(row)
         if len(results) >= limit:
             break
 
@@ -163,7 +176,10 @@ def list_events(
 
 def get_event(namespace: Any, mailbox: Mailbox, *, entry_id: str) -> dict[str, Any]:
     event = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_APPOINTMENT)
-    return {**_event_full(event), "store_id": mailbox.store_id}
+    result = _event_result(event, mailbox, detail=True)
+    if result is None:
+        raise OutlookError(ITEM_NOT_FOUND)
+    return result
 
 
 def create_event(
@@ -213,14 +229,13 @@ def create_event(
     if sensitivity is not None:
         appt.Sensitivity = sensitivity
     appt.Save()
-    result = {
-        "status": "created",
-        "entry_id": appt.EntryID,
-        "store_id": mailbox.store_id,
-        "subject": appt.Subject,
-        "start": to_iso(appt.Start),
-        "end": to_iso(appt.End),
-    }
+    result = {"status": "created"}
+    mode = classify_event(appt, mailbox.privacy, requested=sensitivity).mode
+    if mode == PrivacyMode.FULL:
+        result.update(entry_id=appt.EntryID, store_id=mailbox.store_id, subject=appt.Subject,
+                      start=to_iso(appt.Start), end=to_iso(appt.End))
+    elif mode == PrivacyMode.BUSY_ONLY:
+        result.update(availability(appt))
     if attendees:
         mailbox.bind_sender(appt)
         appt.Send()
@@ -256,14 +271,18 @@ def update_event(
     if sensitivity is not None:
         ev.Sensitivity = sensitivity
     ev.Save()
+    if classify_event(ev, mailbox.privacy, requested=sensitivity).mode != PrivacyMode.FULL:
+        return {"status": "updated"}
     return {"status": "updated", "entry_id": entry_id, "store_id": mailbox.store_id}
 
 
 def delete_event(namespace: Any, mailbox: Mailbox, *, entry_id: str) -> dict[str, Any]:
     ev = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_APPOINTMENT)
-    subject = _safe_get(ev, "Subject", "")
+    result = {"status": "deleted"}
+    if classify_event(ev, mailbox.privacy).mode == PrivacyMode.FULL:
+        result.update(subject=_safe_get(ev, "Subject", ""), entry_id=entry_id, store_id=mailbox.store_id)
     ev.Delete()
-    return {"status": "deleted", "subject": subject, "entry_id": entry_id, "store_id": mailbox.store_id}
+    return result
 
 
 def respond_event(
@@ -282,10 +301,13 @@ def respond_event(
     if code is None:
         raise OutlookError("response must be one of: 'accept', 'tentative', 'decline'.")
     ev = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_APPOINTMENT)
+    result = {"status": "responded"}
+    if classify_event(ev, mailbox.privacy).mode == PrivacyMode.FULL:
+        result.update(response=response, store_id=mailbox.store_id)
     resp = ev.Respond(code, True, False)
     if send_response:
         if resp is None:
             raise OutlookError("Outlook updated the meeting without returning a response to send.")
         mailbox.bind_sender(resp)
         resp.Send()
-    return {"status": "responded", "response": response, "store_id": mailbox.store_id}
+    return result

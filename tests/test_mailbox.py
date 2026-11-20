@@ -45,6 +45,7 @@ def make_profile(names=("a", "b")):
         event.Recipients.Count = 0
         event.Recipients.__bool__.return_value = False
         event.RecurrenceState = 0
+        event.BusyStatus = 2
         event.AllDayEvent = False
         event.Start = event.End = None
         folder.Items.Restrict.return_value = [event]
@@ -62,12 +63,12 @@ def make_profile(names=("a", "b")):
     return namespace
 
 
-def registered(namespace, *, read=("a", "b"), write=("b",)):
+def registered(namespace, *, read=("a", "b"), write=("b",), privacy=None):
     def addresses(names):
         return [name+"@example.test" for name in names]
     policy = parse_tool_policy(json.dumps({"version": 2, "accounts": {
         "read": addresses(read), "write": addresses(write),
-    }}))
+    }, "calendar_privacy": privacy if privacy is not None else {}}))
     server, bridge = build_server(policy=policy)
     async def synthetic_call(function, *args, retry_on_disconnect=True, **kwargs):
         return function(None, namespace, *args, **kwargs)
@@ -103,7 +104,7 @@ def test_listed_event_store_proof(parent_id, mapi_id, equivalent, allowed, monke
     call = registered(ns)
     if allowed:
         assert call("list_events", store_id="store-b")["count"] == 1
-        summarize.assert_called_once_with(event)
+        summarize.assert_called_once_with(event, 0)
     else:
         with pytest.raises(Exception, match="selected store"):
             call("list_events", store_id="store-b")

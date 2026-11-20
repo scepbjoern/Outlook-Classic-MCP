@@ -10,7 +10,7 @@ from outlook_mcp.client import categories as cat_client
 from outlook_mcp.client.mailbox import Access
 from outlook_mcp.schemas import AccountSelector, StoreSelector
 from outlook_mcp.utils.formatting import format_response
-from outlook_mcp.utils.safety import safe_call
+from outlook_mcp.utils.safety import safe_call, safe_item_call
 
 
 def register(mcp, bridge) -> None:
@@ -48,7 +48,7 @@ def register(mcp, bridge) -> None:
             "openWorldHint": False,
         },
     )
-    @safe_call
+    @safe_item_call
     async def outlook_set_category(
         entry_id: Annotated[str, Field(description="EntryID of the item.")],
         categories: Annotated[

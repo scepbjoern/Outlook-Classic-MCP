@@ -80,7 +80,7 @@ def from_iso(value: str | None) -> dt.datetime | None:
         parsed = dt.datetime.fromisoformat(value)
     except ValueError as exc:
         raise OutlookError(
-            f"Invalid datetime '{value}'. Use ISO-8601 format like "
+            "Invalid datetime. Use ISO-8601 format like "
             "'2026-04-25T14:30:00'."
         ) from exc
     if parsed.tzinfo is not None:
@@ -148,7 +148,10 @@ def _render_collection(data: dict[str, Any]) -> str:
                 lines.append(f"  - organizer: {ev['organizer']}")
             if "sensitivity" in ev:
                 lines.append(f"  - sensitivity: {_format_sensitivity(ev)}")
-            lines.append(f"  - id: `{ev.get('entry_id')}`")
+            if "busy_status" in ev:
+                lines.append(f"  - busy status: {ev['busy_status']}")
+            if ev.get("entry_id"):
+                lines.append(f"  - id: `{ev['entry_id']}`")
     elif "full_name" in sample:
         for c in items:
             line = f"- **{c.get('full_name')}**"
@@ -173,10 +176,10 @@ def _render_collection(data: dict[str, Any]) -> str:
             lines.append(f"  - id: `{t.get('entry_id')}`")
     elif "path" in sample and "item_count" in sample:
         for f in items:
-            lines.append(
-                f"- `{f['path']}` — {f['item_count']} items, "
-                f"{f.get('unread_count', 0)} unread"
-            )
+            line = f"- `{f['path']}`"
+            if f.get("item_count") is not None:
+                line += f" — {f['item_count']} items, {f.get('unread_count', 0)} unread"
+            lines.append(line)
     elif "name" in sample and "color" in sample:
         # Categories
         for cat in items:

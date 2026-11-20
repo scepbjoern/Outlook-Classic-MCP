@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Flag, auto
 from typing import Any
 
-from outlook_mcp.config import AccountPolicy, is_smtp_address, normalize_identifier
+from outlook_mcp.config import AccountPolicy, CalendarPrivacy, PrivacyMode, is_smtp_address, normalize_identifier
 from outlook_mcp.errors import OutlookError
 
 
@@ -28,6 +28,7 @@ class Mailbox:
     store: Any
     store_id: str
     single_account: bool
+    privacy: PrivacyMode = PrivacyMode.BUSY_ONLY
 
     def matches_store_id(self, store_id: Any) -> bool:
         return bool(self.store_id) and _identifier(store_id) == _identifier(self.store_id)
@@ -73,7 +74,7 @@ class Mailbox:
 class MailboxProfile:
     """Snapshot account-to-store mappings for one authorized operation."""
 
-    def __init__(self, namespace: Any, policy: AccountPolicy | None) -> None:
+    def __init__(self, namespace: Any, policy: AccountPolicy | None, calendar_privacy: CalendarPrivacy | None = None) -> None:
         self.policy = policy
         accounts = namespace.Accounts
         count = accounts.Count
@@ -81,12 +82,14 @@ class MailboxProfile:
         for index in range(1, count + 1):
             account = accounts.Item(index)
             store = account.DeliveryStore
+            address = account.SmtpAddress or ""
             self.mailboxes.append(Mailbox(
                 account=account,
-                smtp_address=account.SmtpAddress or "",
+                smtp_address=address,
                 store=store,
                 store_id=(store.StoreID or "") if store is not None else "",
                 single_account=count == 1,
+                privacy=calendar_privacy.for_account(address) if calendar_privacy else PrivacyMode.BUSY_ONLY,
             ))
         self._account_counts = Counter(_identifier(mailbox.smtp_address) for mailbox in self.mailboxes)
         self._store_counts = Counter(_identifier(mailbox.store_id) for mailbox in self.mailboxes)
@@ -157,6 +160,7 @@ class MailboxProfile:
 def call_in_mailbox(
     outlook: Any, namespace: Any, *, operation, policy: AccountPolicy | None,
     access: Access, account: str | None, store_id: str | None, arguments: dict[str, Any],
+    calendar_privacy: CalendarPrivacy | None = None,
 ) -> Any:
-    mailbox = MailboxProfile(namespace, policy).resolve(account, store_id, access)
+    mailbox = MailboxProfile(namespace, policy, calendar_privacy).resolve(account, store_id, access)
     return operation(namespace, mailbox, **arguments)

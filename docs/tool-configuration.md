@@ -132,6 +132,67 @@ moving, deletion and marking, meeting responses, event deletion, setting
 categories and toggling rules require both rights because these actions also
 return or transmit information about existing items.
 
+## Calendar privacy
+
+After upgrading and restarting, a missing config, version 1 (including an
+omitted version), and existing version 2 files all default to `busy_only`.
+The new setting governs results from native calendar appointments. Tool
+registration and account read/write permissions still apply independently.
+
+| Effective mode | Native Private (2) | Unreliable or unknown sensitivity |
+| --- | --- | --- |
+| `busy_only` (default) | “Appointment”, start, end and busy status only | Same |
+| `exclude` | Omitted from calendar lists. Direct detail returns the same error as a missing item. | Same |
+| `full` | Full fields, including subject, ID and body where provided by the tool | Availability only |
+
+To restore the previous detail view for **known** private appointments in a
+single-account installation, add `"calendar_privacy": {"default": "full"}`
+to the existing file. To configure individual accounts, use version 2.
+For example, this configuration grants both stores read access, permits edits
+in one, and hides private appointments in the other.
+
+```json
+{
+  "version": 2,
+  "accounts": {
+    "read": ["alpha@example.test", "beta@example.test"],
+    "write": ["alpha@example.test"]
+  },
+  "calendar_privacy": {
+    "default": "busy_only",
+    "accounts": {"beta@example.test": "exclude"}
+  }
+}
+```
+
+The per-account key is the exact SMTP address of the authorized delivery
+store, matched with the same case rules as account permissions. Selection
+by StoreID uses the same policy. A global `exclude` takes precedence over
+every override. Invalid settings abort startup. Older server versions reject
+the new configuration field. Review the older version's disclosure behaviour
+before downgrading.
+
+The availability record has exactly four fields. `busy_status` uses Outlook's
+codes 0 (free), 1 (tentative), 2 (busy), 3 (out of office) and 4 (working
+elsewhere). Unreadable availability values are `null`. The list envelope
+identifies the selected store and requested date range. Its count and limit
+apply only to visible rows. Under `exclude`, raw folder item and unread totals
+are also suppressed because mixed folders can contain hidden appointments.
+
+Each expanded occurrence or exception uses its own sensitivity. When Outlook
+resolves an EntryID to the series master, the result describes the master.
+Its disclosure is limited by the strictest live exception. Inaccessible
+recurrence information triggers the unknown-sensitivity fallback.
+[Outlook recurrence exceptions](https://learn.microsoft.com/en-us/office/vba/api/outlook.recurrencepattern.exceptions)
+
+Create, edit, delete, meeting-response and category operations on protected
+appointments return a status acknowledgement. A `busy_only` create also
+returns the availability fields. Write permission still allows an explicit
+change of sensitivity, including removing the Private flag. Subsequent reads
+use the new classification. Assigning a color category named “Privat” has no
+effect on classification. Separately stored meeting requests in mail folders
+follow the mail tools' permissions.
+
 ## Outlook provider behaviour
 
 - Each account maps to its delivery store in the loaded MAPI profile. Separate profiles require separate Outlook sessions. Archive PSTs and delegate-only stores without an account mapping cannot be selected.

@@ -34,11 +34,13 @@ class _MailboxBridge:
     def __init__(self, bridge, policy: ToolPolicy) -> None:
         self._bridge = bridge
         self._accounts = policy.accounts
+        self._calendar_privacy = policy.calendar_privacy
 
     async def call(self, operation, access: Access, *, account, store_id, **kwargs):
         return await self._bridge.call(
             call_in_mailbox, retry_on_disconnect=Access.WRITE not in access,
             operation=operation, policy=self._accounts,
+            calendar_privacy=self._calendar_privacy,
             access=access, account=account, store_id=store_id, arguments=kwargs,
         )
 

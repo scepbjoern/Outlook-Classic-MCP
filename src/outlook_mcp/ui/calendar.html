@@ -14,9 +14,9 @@
   .event {
     display: flex; gap: 0; margin: 4px 12px; border: 1px solid var(--border);
     border-radius: var(--radius); background: var(--card); overflow: hidden;
-    cursor: pointer; transition: border-color .12s, box-shadow .12s;
+    transition: border-color .12s, box-shadow .12s;
   }
-  .event:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+  .event[data-index]:hover { cursor: pointer; border-color: var(--accent); box-shadow: var(--shadow); }
   .event .bar { width: 4px; flex-shrink: 0; }
   .event .timecol {
     flex: 0 0 78px; padding: 9px 0 9px 12px; font-size: 12px; color: var(--text2);
@@ -56,8 +56,8 @@
 const $ = id => document.getElementById(id);
 let events = [];
 let toolArgs = {};
-let openId = null;           // expanded event
-const detailCache = new Map();      // entry_id -> detail dict
+let openEvent = null;        // occurrences can share an EntryID
+const detailCache = new Map();      // listed event object -> detail dict
 
 $("refreshBtn").innerHTML = icon("refresh", 15);
 
@@ -65,8 +65,7 @@ MCPApp.onToolInput(p => { toolArgs = (p && p.arguments) || {}; });
 MCPApp.onToolResult(r => {
   if (r.isError) {
     const txt = (r.content || []).filter(c => c.type === "text").map(c => c.text).join("\n");
-    $("error").innerHTML = '<div class="banner">' + esc(txt || "Something went wrong.") + "</div>";
-    $("agenda").innerHTML = "";
+    showError(txt);
     return;
   }
   const d = MCPApp.data(r);
@@ -74,9 +73,19 @@ MCPApp.onToolResult(r => {
   load(d);
 });
 
+function showError(message) {
+  events = [];
+  openEvent = null;
+  detailCache.clear();
+  $("agenda").innerHTML = "";
+  $("range").textContent = $("updated").textContent = "";
+  $("error").innerHTML = '<div class="banner">' + esc(message || "Could not load the calendar.") + "</div>";
+  showStatus($("status"), "Error");
+}
+
 function load(d) {
   toolArgs = { ...toolArgs, store_id: d.store_id };
-  openId = null;
+  openEvent = null;
   detailCache.clear();
   events = d.items.slice().sort((a, b) => String(a.start).localeCompare(String(b.start)));
   $("error").innerHTML = "";
@@ -88,6 +97,7 @@ function load(d) {
 }
 
 function dur(ev) {
+  if (!ev.start || !ev.end) return "";
   const a = new Date(ev.start), b = new Date(ev.end);
   if (isNaN(a) || isNaN(b)) return "";
   const mins = Math.round((b - a) / 60000);
@@ -101,27 +111,30 @@ function render() {
     $("agenda").innerHTML = '<div class="empty"><div class="big">🗓️</div>No events in this range.</div>';
     return;
   }
-  const groups = new Map();   // yyyy-mm-dd -> events
-  for (const ev of events) {
+  const groups = new Map();   // yyyy-mm-dd -> row indexes
+  for (const [index, ev] of events.entries()) {
     const key = String(ev.start).slice(0, 10);
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(ev);
+    groups.get(key).push(index);
   }
   let html = "";
-  for (const [day, evs] of groups) {
-    const heading = fmtDayHeading(day + "T00:00:00");
+  for (const [day, indexes] of groups) {
+    const heading = day === "null" ? "Time unavailable" : fmtDayHeading(day + "T00:00:00");
     html += '<div class="dayhead' + (heading === "Today" ? " today" : "") + '">' + esc(heading) + "</div>";
-    for (const ev of evs) {
+    for (const index of indexes) {
+      const ev = events[index];
       const hue = nameHue(ev.subject);
-      const open = ev.entry_id === openId;
-      html += '<div class="event fade-in' + (open ? " open" : "") + '" data-id="' + esc(ev.entry_id) + '">' +
+      const open = ev === openEvent;
+      const dataIndex = ev.entry_id ? ' data-index="' + index + '"' : "";
+      html += '<div class="event fade-in' + (open ? " open" : "") + '"' + dataIndex + '>' +
         '<div class="bar" style="background:hsl(' + hue + ' 55% 52%)"></div>' +
         '<div class="timecol">' +
           (ev.all_day ? '<span class="st">All day</span>'
-            : '<span class="st">' + esc(fmtClock(new Date(ev.start))) + "</span><br>" + esc(dur(ev))) +
+            : '<span class="st">' + (ev.start ? esc(fmtClock(new Date(ev.start))) : "—") + "</span><br>" + esc(dur(ev))) +
         "</div>" +
         '<div class="main">' +
           '<div class="subj">' + esc(ev.subject || "(no subject)") + "</div>" +
+          ("busy_status" in ev ? '<div class="where">' + busyLabel(ev.busy_status) + "</div>" : "") +
           (ev.sensitivity_label ? '<div class="where">Sensitivity: ' + esc(ev.sensitivity_label) + "</div>" : "") +
           ((ev.location || ev.organizer)
             ? '<div class="where">' +
@@ -141,6 +154,7 @@ function render() {
 function renderDetails(ev) {
   const d = detailCache.get(ev);
   if (!d) return '<div class="details"><div class="spinner"></div></div>';
+  if ("busy_status" in d) return '<div class="details">' + busyLabel(d.busy_status) + "</div>";
   const atts = (d.attendees || []).map(a =>
     '<div class="att">' + avatarHtml(a.name, 20) + " " + esc(a.name || a.address || "") +
     '<span class="resp">' + esc(respLabel(a.response)) + "</span></div>").join("");
@@ -151,40 +165,46 @@ function renderDetails(ev) {
   "</div>";
 }
 
+function busyLabel(code) {
+  return ["Free", "Tentative", "Busy", "Out of office", "Working elsewhere"][code] || "Availability unknown";
+}
+
 function respLabel(code) {
   // olResponseStatus: 0 none, 1 organizer, 2 tentative, 3 accepted, 4 declined, 5 not responded
   return ({ 1: "organizer", 2: "tentative", 3: "accepted", 4: "declined", 5: "no reply" })[code] || "";
 }
 
 $("agenda").addEventListener("click", async ev => {
-  const card = ev.target.closest(".event");
+  const card = ev.target.closest(".event[data-index]");
   if (!card) return;
-  const id = card.dataset.id;
-  if (openId === id) { openId = null; render(); return; }
-  openId = id;
+  const event = events[card.dataset.index];
+  if (!event || !event.entry_id) return;
+  if (openEvent === event) { openEvent = null; render(); return; }
+  openEvent = event;
   render();
-  const event = events.find(e => e.entry_id === id);
-  if (event && !detailCache.has(event)) {
+  if (!detailCache.has(event)) {
     try {
-      const r = await MCPApp.callTool("outlook_get_event", { entry_id: id, store_id: event.store_id });
+      const r = await MCPApp.callTool("outlook_get_event", { entry_id: event.entry_id, store_id: event.store_id });
       const d = MCPApp.data(r);
-      if (d && events.includes(event)) detailCache.set(event, d);
+      if (events.includes(event)) detailCache.set(event, d || { body: "Details unavailable." });
     } catch (e) {
       if (events.includes(event)) detailCache.set(event, { body: "Could not load details: " + e.message });
     }
-    if (openId === id) render();
+    if (openEvent === event) render();
   }
 });
 
 $("refreshBtn").addEventListener("click", async () => {
+  const previous = events;
   showStatus($("status"), "Refreshing…");
   try {
     const r = await MCPApp.callTool("outlook_list_events", toolArgs);
+    if (previous !== events) return;
     const d = MCPApp.data(r);
     if (d && Array.isArray(d.items)) load(d);
+    else showError();
   } catch (e) {
-    $("error").innerHTML = '<div class="banner">' + esc(e.message) + "</div>";
-    showStatus($("status"), "Error");
+    if (previous === events) showError(e.message);
   }
 });
 
