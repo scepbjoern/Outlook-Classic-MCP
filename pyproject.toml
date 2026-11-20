@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build==0.13.9"]
+build-backend = "uv_build"
 
 [project]
 name = "outlook-classic-mcp"
@@ -8,13 +8,13 @@ version = "0.3.3"
 description = "Local MCP server for classic Outlook desktop on Windows (COM, no Azure app required)."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Anas Shaikh" }]
 keywords = ["mcp", "outlook", "model-context-protocol", "claude", "windows"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: Microsoft :: Windows",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
@@ -37,14 +37,11 @@ dev = ["build>=1.0", "twine>=5.0", "pytest>=8.0"]
 outlook-mcp = "outlook_mcp.entrypoint:main"
 
 [project.urls]
-Homepage = "https://github.com/anasahmed07/Outlook-Classic-MCP"
-Issues = "https://github.com/anasahmed07/Outlook-Classic-MCP/issues"
+Homepage = "https://github.com/scepbjoern/Outlook-Classic-MCP"
+Issues = "https://github.com/scepbjoern/Outlook-Classic-MCP/issues"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-"outlook_mcp.ui" = ["*.html"]
+[tool.uv.build-backend]
+module-name = "outlook_mcp"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

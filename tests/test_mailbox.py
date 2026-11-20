@@ -332,3 +332,38 @@ def test_exchange_directory_reads_only_entries_of_matching_store():
     ns.AddressLists = [lists[1], lists[1]]
     assert _directory_for_store(ns, mailbox) is None
     ns.GetGlobalAddressList.assert_not_called()
+
+
+@pytest.mark.parametrize("mode,label", [
+    (0, "not_exchange"), (100, "offline"), (200, "cached_offline"), (300, "disconnected"),
+    (400, "cached_disconnected"), (500, "cached_connected_headers"), (600, "cached_connected_drizzle"),
+    (700, "cached_connected_full"), (800, "online"), (999, "unknown"), (False, "unknown"),
+])
+def test_identity_reports_only_authorized_connection_modes(mode, label):
+    ns = make_profile()
+    ns.CurrentProfileName = "Synthetic profile"
+    ns.Accounts[0].ExchangeConnectionMode = 800
+    ns.Accounts[1].ExchangeConnectionMode = mode
+    limited = registered(ns, read=(), write=("b",))("whoami", response_format="json")
+    assert limited["profile_name"] is None and limited["readiness"] == "ready"
+    row, = limited["accounts"]
+    assert row["store_id"] == "store-b" and row["exchange_connection"] == label
+    full = registered(ns)("whoami", response_format="json")
+    assert full["profile_name"] == ns.CurrentProfileName
+
+
+def test_unavailable_connection_properties_and_local_receipts():
+    ns = make_profile()
+    call = registered(ns)
+    identity = call("whoami", response_format="json")
+    assert identity["profile_name"] is None
+    assert all(row["exchange_connection"] == "unknown" for row in identity["accounts"])
+    for mode in (200, 800):
+        ns.Accounts[1].ExchangeConnectionMode = mode
+        for draft, outcome in [(True, "saved"), (False, "submitted")]:
+            receipt = call("send_mail", store_id="store-b", subject="Synthetic", body="Example",
+                           to=["guest@example.test"], save_only=draft)
+            assert (receipt["local_outcome"], receipt["exchange_sync"]) == (outcome, "unverified")
+        meeting = call("create_event", store_id="store-b", subject="Synthetic", start="2026-11-23",
+                       end="2026-11-24", attendees=["guest@example.test"])
+        assert (meeting["local_outcome"], meeting["exchange_sync"]) == ("saved_and_submitted", "unverified")

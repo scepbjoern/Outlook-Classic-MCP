@@ -31,9 +31,9 @@ def main() -> None:
     log.info("Starting outlook_mcp (stdio transport)")
 
     try:
-        bridge.start()
+        bridge.start(wait=False)
     except Exception as exc:  # noqa: BLE001
-        log.error("Failed to attach to Outlook: %s", exc)
+        log.error("Failed to start the Outlook worker: %s", exc)
         sys.exit(2)
 
     try:

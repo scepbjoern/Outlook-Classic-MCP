@@ -380,7 +380,7 @@ def register(mcp, bridge) -> None:
     ) -> str:
         """Save one or all attachments from a mail to a local directory."""
         data = await bridge.call(
-            mail_client.save_attachments, Access.READ,
+            mail_client.save_attachments, Access.READ, local_write=True,
             account=account,
             store_id=store_id,
             entry_id=entry_id,

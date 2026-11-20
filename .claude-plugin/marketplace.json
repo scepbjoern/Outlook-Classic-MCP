@@ -1,8 +1,8 @@
 {
   "name": "outlook-classic-mcp",
   "owner": {
-    "name": "Anas Ahmed Shaikh",
-    "url": "https://github.com/anasahmed07"
+    "name": "scepbjoern",
+    "url": "https://github.com/scepbjoern"
   },
   "metadata": {
     "description": "Single-plugin marketplace that ships the `outlook` agent plugin (Claude Code, Cowork, Copilot, Cursor, and other plugin-compatible agents) — full Microsoft Outlook (classic desktop) integration: mail, calendar, contacts, tasks, categories, rules, OOO."
@@ -15,7 +15,7 @@
       "version": "0.3.3",
       "category": "productivity",
       "keywords": ["outlook", "email", "calendar", "windows", "mcp"],
-      "homepage": "https://github.com/anasahmed07/Outlook-Classic-MCP"
+      "homepage": "https://github.com/scepbjoern/Outlook-Classic-MCP"
     }
   ]
 }

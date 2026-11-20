@@ -20,55 +20,20 @@ registration, no Microsoft Graph API, no OAuth tokens.**
 - **Outlook desktop (Classic)** — the `OUTLOOK.EXE` shipped with
   Microsoft 365 / Office. The "new Outlook" (`olk.exe`) is **not**
   supported (no COM surface).
-- Python 3.10+ (the installer fetches Python 3.11 via `uv` if you
-  don't already have one).
-
-You do **not** need to open Outlook before starting the server — the
-server auto-launches Outlook on its first COM call.
-
----
+- Git and uv 0.13.9 for installation. The Windows bootstrap selects CPython
+  3.12.16. Only running the server requires an Outlook profile.
 
 ## Install
 
-Three paths, simplest first.
+Install from an explicitly reviewed **commit of this fork**. Choose the full
+commit ID from the reviewed change and its passing CI run. The Windows guide
+includes the copyable checkout, install and version checks, how to obtain uv,
+and how to update or roll back using separate directories.
+[Install or update the verified fork](docs/installation.md)
 
-### Option 1 — Agent plugin (recommended)
-
-The repo doubles as a **plugin marketplace**. Installing the plugin registers the MCP server *and* loads the bundled [`outlook` skill](#agent-skill) (an operational reference that teaches the agent how to drive these tools) in one step. The MCP server itself is fetched on demand by `uvx` directly from PyPI — no `git clone`, no `pip install`, no `.venv` to maintain.
-
-The plugin format started in Claude Code and is now supported by other agents too (Cowork, Copilot, Cursor, and others that adopted the plugin/skill format) — point your agent's plugin install flow at this repo. The commands below are for Claude Code:
-
-Install [`uv`](https://docs.astral.sh/uv/) once if you don't have it:
-
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Open a fresh terminal so PATH refreshes, then in any Claude Code session:
-
-```text
-/plugin marketplace add anasahmed07/Outlook-Classic-MCP
-/plugin install outlook@outlook-classic-mcp
-```
-
-Restart Claude Code (`/quit`, reopen). First call has a one-time 5–15 s pause while `uvx` resolves the package; subsequent calls are instant. Confirm with `outlook_whoami`.
-
-To update later: `/plugin marketplace update outlook-classic-mcp` then `/plugin update outlook@outlook-classic-mcp`. To pull a fresh PyPI release of the server itself: `uv cache clean outlook-classic-mcp`.
-
-### Option 2 — From PyPI with uv (any MCP client)
-
-Works for any MCP client. The smart client installer auto-registers the server with Claude Desktop, Claude Code, Cursor, Cline, Continue, and Windsurf; for other clients (e.g. VS Code / Copilot agent mode), add the server to their MCP config manually — see below.
-
-```bat
-uv pip install --system outlook-classic-mcp
-python -m outlook_mcp.scripts.install_to_clients
-```
-
-(`uv` is Astral's Python installer — see Option 1 above for the one-line install. `--system` writes to your system Python so `python -m outlook_mcp` resolves anywhere; drop the flag if you'd rather install into an active venv.)
-
-Package: <https://pypi.org/project/outlook-classic-mcp/>.
-
----
+The PyPI distribution named `outlook-classic-mcp` at version 0.3.3 comes
+from upstream. Start the installed fork with its absolute
+`.venv/Scripts/python.exe` path and arguments `-m outlook_mcp`.
 
 ## Smart client installer
 
@@ -103,8 +68,8 @@ server entry in its MCP config:
 {
   "mcpServers": {
     "outlook": {
-      "command": "uvx",
-      "args": ["--from", "outlook-classic-mcp", "outlook-mcp"]
+      "command": "C:/Tools/outlook-reviewed/.venv/Scripts/python.exe",
+      "args": ["-m", "outlook_mcp"]
     }
   }
 }
@@ -252,6 +217,8 @@ The bundled [Outlook skill](skills/outlook/SKILL.md) uses the tools advertised b
 - [Try a read-only calendar, then approve one appointment](skills/outlook/references/calendar-workflow.md). The examples cover native privacy, Free/Busy limits and untracked, store-specific aliases.
 - [Tool reference](skills/outlook/references/tools.md) and [worked recipes](skills/outlook/references/recipes.md) for other Outlook operations.
 
+The optional plugin uses the installed interpreter selected by `OUTLOOK_MCP_PYTHON`. See the [installation guide](docs/installation.md).
+
 ---
 
 ## Conventions
@@ -316,28 +283,9 @@ the Outlook process stays warm across calls.
 See [security development and verification](SECURITY.md) for the locked CI checks
 and the separate manual procedure for an isolated synthetic Outlook profile.
 
-```bat
-.venv\Scripts\activate
-pip install -e .[dev]
-pytest
-```
-
-Smoke test the running server with the MCP inspector:
-
-```bat
-npx @modelcontextprotocol/inspector .venv\Scripts\python.exe -m outlook_mcp
-```
-
-> The inspector mangles backslashes on Windows — use forward-slash
-> paths if you hit "ENOENT" errors.
-
-Publish to PyPI:
-
-```bat
-publish.bat
-```
-
-(`TWINE_USERNAME=__token__`, `TWINE_PASSWORD=<pypi-token>`.)
+Use a separate development checkout and run the commands in SECURITY.md.
+For package builds, origin checks and the manual publication policy, see
+[release verification](docs/release.md).
 
 ---
 
@@ -346,10 +294,10 @@ publish.bat
 - The first call after a cold start takes a few seconds — Outlook's
   COM surface boots up. After that, calls are fast (one Dispatch
   handle is reused).
-- Closing Outlook while the server is running is fine: the next tool
-  call detects the dead COM connection, relaunches OUTLOOK.EXE,
-  reconnects, and retries automatically (expect that one call to take
-  15–30 s).
+- After Outlook reconnects, the server may retry a read once in the same
+  profile and store. Writes and attachment exports are never replayed
+  automatically. If a write was interrupted, check the selected store before
+  submitting it again. See [Outlook readiness and write receipts](docs/outlook-readiness.md).
 - Outlook auto-launch relies on standard COM behavior. On
   tightly-locked-down machines (UAC, group policy blocking COM
   activation), open Outlook manually and try again.
@@ -371,19 +319,18 @@ publish.bat
 
 ## Troubleshooting
 
-**"Outlook COM thread did not become ready"** — Outlook didn't
-auto-launch. Open it manually, sign in, then restart the MCP client
-so it re-spawns the server.
+**Outlook is starting, reconnecting or unavailable.** Open classic Outlook in
+your unlocked Windows session, complete any profile or sign-in prompt, then
+check `outlook_whoami`. For timeout recovery, offline writes and Exchange
+verification, see [Outlook readiness and write receipts](docs/outlook-readiness.md).
 
 **Inspector shows ENOENT for the python path** — known Windows
 quirk; use forward slashes (`C:/Users/you/...`) instead of
 backslashes.
 
-**Send / reply gets blocked silently** — Outlook → File → Options →
-Trust Center → Programmatic Access. The setting that works while
-you're using the server is "Never warn me about suspicious activity
-(not recommended)" — or have IT add the Python interpreter as a
-trusted publisher.
+**Send or reply is waiting on Outlook.** Check the interactive Outlook window
+for a security or sign-in prompt. After a timeout, inspect the selected store's
+Outbox and Sent Items before considering another send.
 
 ---
 

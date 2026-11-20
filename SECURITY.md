@@ -1,5 +1,13 @@
 # Security development and verification
 
+## Supported fork revisions
+
+Security fixes target the current fork on `main`. Report issues against a
+full fork commit, including for local installations reporting version 0.3.3.
+Historical commits and upstream PyPI releases have no separate maintenance
+branch here. See [installation and updates](docs/installation.md) and
+[package provenance and release checks](docs/release.md).
+
 ## Repeat the automated checks
 
 Use a fresh checkout and Python 3.10 or later. The workflow pins uv 0.13.9
@@ -81,5 +89,11 @@ all network traffic in other configurations.
 
 ## Reporting
 
-Send a minimal synthetic description privately to the repository maintainer.
-Exclude real account details, message bodies, filenames, tokens and captures.
+If GitHub offers private reporting, use the repository's Security tab.
+Otherwise [open a contact request](https://github.com/scepbjoern/Outlook-Classic-MCP/issues/new)
+titled "Private security contact requested" with a way for the maintainer
+to reach you privately. Share technical details only after that channel is
+established. Include the affected fork commit and a minimal synthetic
+description. Exclude account data, tokens and captures. The maintainer
+triages reports on a best-effort basis and follows up privately about
+reproduction and remediation. There is no guaranteed response deadline.

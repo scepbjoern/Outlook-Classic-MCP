@@ -2,7 +2,7 @@
 
 The server runs in the Windows user session that has classic Outlook and the intended profile. A compatible MCP host starts the installed fork as a child process and exchanges MCP messages over standard input and output (STDIO). A client on another device can use this path only if its execution host actually runs the process in that Windows session.
 
-Select the fork installation by its reviewed **full 40-character Git commit**. The public PyPI distribution `outlook-classic-mcp==0.3.3` belongs to upstream. Follow the installation instructions for the selected commit. [Fork installation procedure](https://github.com/scepbjoern/Outlook-Classic-MCP/blob/e36cd3579897ddc36d40e3243b9a88faa43d752c/docs/installation.md)
+Select the fork installation by its reviewed **full 40-character Git commit**. The public PyPI distribution `outlook-classic-mcp==0.3.3` belongs to upstream. Follow the installation instructions for the selected commit. [Fork installation procedure](../../../docs/installation.md)
 
 Set the STDIO command to the absolute path of that installation's `.venv/Scripts/python.exe`. Pass `-m` and `outlook_mcp` as two separate arguments, and set `OUTLOOK_MCP_CONFIG` to the absolute path of the prepared local policy in that process's environment. The example paths below are fictional. Create the policy before connecting. An explicitly selected missing or invalid policy stops startup. A missing default policy can expose all tools.
 
@@ -13,6 +13,8 @@ Set the STDIO command to the absolute path of that installation's `.venv/Scripts
 | VS Code with a local MCP host | Use the user MCP configuration, a named entry under `servers`, `type: "stdio"`, `command`, `args` and `env`. In a remote workspace verify where the server runs. Copilot or another selected model can receive tool results. [VS Code MCP servers](https://code.visualstudio.com/docs/agent-customization/mcp-servers) |
 | OpenClaw with a compatible Windows Gateway | In a Gateway version supporting local MCP servers, use `mcp.servers.outlook` with `transport: "stdio"`, `command`, `args` and `env`. The Gateway must be able to start the process in the Outlook user session. A Linux/WSL or remote Gateway alone cannot access Windows Outlook COM. The configured agent/model and any channel receiving the answer form part of the disclosure boundary. [OpenClaw MCP](https://docs.openclaw.ai/tools/mcp) · [Transport fields](https://docs.openclaw.ai/cli/mcp/transports) |
 | Hosted ChatGPT / cloud-only session | A web chat does not start this process on the user's PC. ChatGPT custom MCP supports remote endpoints and, for eligible setups, Secure MCP Tunnel with a separately configured local client. That route carries requests and results through OpenAI. This project supplies a STDIO server. A tunnel or other remote deployment requires a separate access and privacy decision. [ChatGPT custom MCP](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt) · [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) |
+
+When using the bundled plugin, set `OUTLOOK_MCP_PYTHON` to the same installed interpreter. The client reads the policy from the server process environment.
 
 ### Example for OpenCode
 
@@ -50,6 +52,6 @@ approval_mode = "prompt"
 
 ### Discover tools before reading Outlook
 
-Have the client initialize the STDIO connection and inspect its current tool list (MCP `tools/list`). This is a protocol operation. Use the names and schemas offered by that connection. An absent tool can reflect server policy or a client filter. A skill file, config entry or static MCP App view alone establishes no permissions. A successful listing establishes tool discovery only. It gives no evidence of Outlook sync or freshness.
+Have the client initialize the STDIO connection and inspect its current tool list (MCP `tools/list`). This is a protocol operation. Use the names and schemas offered by that connection. An absent tool can reflect server policy or a client filter. A skill file, config entry or static MCP App view alone establishes no permissions. A successful listing establishes tool discovery only. Use the enabled `outlook_whoami` tool to check local readiness and the selected account's Exchange connection. A connected account or local save does not establish that a particular item has synchronized. See [readiness and write receipts](../../../docs/outlook-readiness.md) and the [optional Windows check](../../../docs/outlook-readiness-smoke.md).
 
 After a server-policy edit, end the old server process, reconnect and refresh the client's tool descriptions. For a first read, follow the [calendar walkthrough](calendar-workflow.md). It includes a restrictive policy and the expected disclosures.

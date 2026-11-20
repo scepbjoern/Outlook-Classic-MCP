@@ -21,7 +21,7 @@ class SyntheticBridge:
             event.Sensitivity = 2
             event.Start, event.End = datetime(2026, 11, 23, 10), datetime(2026, 11, 23, 11)
 
-    def start(self):
+    def start(self, *, wait=True):
         pass
 
     def stop(self):

@@ -111,8 +111,11 @@ def test_category_validation_uses_listing_provider_guard_only_when_needed(profil
 def test_private_category_receipts_and_reads(profile, privacy):
     call = registered(profile, privacy={"default": privacy})
     created = call("create_event", **STORE, **NEW_EVENT, categories=["Privat"], sensitivity=2)
+    assert created.pop("local_outcome") == "saved" and created.pop("exchange_sync") == "unverified"
     assert set(created) == ({"status", "subject", "start", "end", "busy_status"} if privacy == "busy_only" else {"status"})
-    assert call("update_event", **EXISTING, remove_categories=["Privat"], add_categories=[LABEL]) == {"status": "updated"}
+    assert call("update_event", **EXISTING, remove_categories=["Privat"], add_categories=[LABEL]) == {
+        "status": "updated", "local_outcome": "completed", "exchange_sync": "unverified",
+    }
     rows = call("list_events", **STORE, **WINDOW)["items"]
     if privacy == "exclude":
         assert rows == []

@@ -25,6 +25,6 @@ def register(mcp, bridge) -> None:
     async def outlook_whoami(
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
     ) -> str:
-        """List authorized Outlook accounts, StoreIDs and access levels."""
+        """Show Outlook readiness, loaded profile and authorized accounts, StoreIDs and connection modes."""
         data = await bridge.identity()
         return format_response(data, response_format)
