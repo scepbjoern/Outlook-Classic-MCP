@@ -65,7 +65,7 @@ def register(mcp, bridge) -> None:
         scope: EventScope = None,
         original_start: OriginalStart = None,
     ) -> str:
-        """Replace the categories on an item (mail / event / task)."""
+        """Replace categories on mail, tasks, standalone appointments or an explicitly selected whole series."""
         data = await bridge.call(
             cat_client.set_category, Access.READ_WRITE,
             account=account,

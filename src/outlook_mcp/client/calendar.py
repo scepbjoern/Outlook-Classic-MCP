@@ -8,6 +8,7 @@ from typing import Any
 
 from outlook_mcp.client.calendar_privacy import availability, classify_event, event_time
 from outlook_mcp.client.calendar_target import exception_count, require_event_store, select_event, selection_fields
+from outlook_mcp.client.categories import event_categories, require_category_scope
 from outlook_mcp.client.folders import _safe_get, get_item_by_id
 from outlook_mcp.client.mailbox import Mailbox
 from outlook_mcp.config import PrivacyMode
@@ -221,13 +222,17 @@ def create_event(
     reminder_minutes: int | None = 15,
     recurrence: Recurrence | None = None,
     sensitivity: int | None = None,
+    categories: list[str] | None = None,
 ) -> dict[str, Any]:
     _validate_sensitivity(sensitivity)
     mailbox.require_smtp_recipients(attendees or [])
     start_time = to_com(from_iso(start))
     end_time = to_com(from_iso(end))
+    assignment = event_categories(namespace, mailbox, replace=categories)
     appt = mailbox.default_folder(OL_FOLDER_CALENDAR).Items.Add(OL_APPOINTMENT_ITEM)
     mailbox.require_store(appt.Parent)
+    if assignment is not None:
+        appt.Categories = assignment
     appt.Subject = subject
     # to_com, not the bare datetime: pywin32 would read a naive value
     # as local and hand Outlook its UTC clock, shifting the event one
@@ -280,9 +285,14 @@ def update_event(
     location: str | None = None,
     body: str | None = None,
     sensitivity: int | None = None,
+    add_categories: list[str] | None = None,
+    remove_categories: list[str] | None = None,
+    replace_categories: list[str] | None = None,
 ) -> dict[str, Any]:
     _validate_sensitivity(sensitivity)
     ev = _target(namespace, mailbox, entry_id, scope, original_start)
+    if any(names is not None for names in (add_categories, remove_categories, replace_categories)):
+        require_category_scope(scope)
     times = [_updated_time(field, value) for field, value in (("Start", start), ("End", end))
              if value is not None]
     if scope == "series" and (start is not None or end is not None):
@@ -292,6 +302,10 @@ def update_event(
             raise OutlookError("Cannot verify exceptions before changing series times.") from exc
         if count:
             raise OutlookError("Changing series times could discard exceptions. Select one occurrence.")
+    assignment = event_categories(namespace, mailbox, event=ev, replace=replace_categories,
+                                  add=add_categories, remove=remove_categories)
+    if assignment is not None:
+        ev.Categories = assignment
     if subject is not None:
         ev.Subject = subject
     for field, value in times:

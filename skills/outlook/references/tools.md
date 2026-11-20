@@ -229,7 +229,8 @@ Full event detail, including attendees and their RSVP status.
 **Returns**: summary fields + `body, attendees: [{name, address, type, response}], reminder_minutes, categories`.
 
 For get, update, delete, respond and set-category, pass the listed `store_id` and `entry_id`.
-For a recurring instance also pass `scope="occurrence"` and its `original_start` with offset.
+For operations supported on a recurring instance, also pass `scope="occurrence"`
+and its `original_start` with offset. Category writes require whole-series scope.
 This selects the original slot even after a move. The full row marks a modified occurrence
 with `is_exception=true`. Use `scope="series"` alone for the master. A legacy detail
 read without scope describes the object opened by ID. Recurring writes require explicit scope.
@@ -251,6 +252,7 @@ Create a calendar event or meeting invite. **Adding any attendee turns this into
 | `reminder_minutes`  | int 0–10080    | `15`    | Minutes before start. |
 | `recurrence`        | Recurrence obj | `null`  | See SKILL.md → Recurrence. |
 | `sensitivity`       | int 0–3        | omitted | Set the native Outlook level. Omit to use Outlook's default. |
+| `categories`        | list[str]      | omitted | Initial assignments. Supply exact category names from the selected store. |
 
 **Returns**: `{ status: "created", entry_id, subject, start, end }`.
 
@@ -272,6 +274,26 @@ Changing series start or end requires a verified empty exceptions collection.
 | `location` | string   | `null`  | |
 | `body`     | string   | `null`  | |
 | `sensitivity` | int 0–3 | omitted | Omit to preserve the current level. An explicit 0 sets Normal. |
+| `add_categories` | list[str] | omitted | Append missing names. Repeating a name has no further effect. |
+| `remove_categories` | list[str] | omitted | Remove the named assignments, preserving other labels, including ones retired from the store list. |
+| `replace_categories` | list[str] | omitted | Set the complete list. An empty array clears all assignments. |
+
+Omitting the category fields preserves the item's assignments. Add and remove can
+be combined if their names are disjoint. Replacement must be supplied alone.
+On create and update, copy names exactly from `outlook_list_categories` with
+the same store selector. The server rejects unknown names (including removal
+requests) and conflicting operations before editing other fields, saving an
+appointment or sending an invitation. A color category named “Privat” leaves the
+native sensitivity and server disclosure policy intact.
+
+Pass each name as its own array element. Accents, Unicode and punctuation are
+preserved. Outlook's appointment setter uses the Windows regional list
+separator. If a name in the resulting assignment contains that separator, the
+server rejects the change to avoid splitting a label. For recurring appointments,
+category edits require explicit whole-series scope. A category request for a
+single occurrence or exception rejects the entire edit before any fields change.
+Keep the requested scope when reporting this error to the user.
+[Microsoft's AppointmentItem.Categories reference](https://learn.microsoft.com/en-us/office/vba/api/outlook.appointmentitem.categories)
 
 **Returns**: `{ status: "updated", entry_id }`. If the event has attendees, Outlook may send an updated-meeting notification when this saves.
 
@@ -381,11 +403,12 @@ Marks the task 100% complete. Returns `{ status: "completed", entry_id }`.
 
 ### `outlook_list_categories`
 
-Returns the color categories defined in the user's Outlook profile: `{ count, items: [{name, color}, ...] }`. The selected delivery store supplies the category list. Secondary non-Exchange providers can expose the primary list, so the server restricts these providers to single-account, single-store profiles.
+Returns the selected delivery store's color categories: `{ count, items: [{name, color}, ...] }`. Secondary non-Exchange providers can expose the primary list, so the server restricts these providers to single-account, single-store profiles. Calendar category validation uses the same provider checks.
 
 ### `outlook_set_category`
 
-Replace the categories on any item (mail, event, task).
+Replace the categories on mail, tasks, standalone appointments or an explicitly
+selected whole series. Individual occurrences and exceptions reject category edits.
 
 | Param        | Type   | Default | Notes |
 | ------------ | ------ | ------- | ----- |
@@ -393,6 +416,10 @@ Replace the categories on any item (mail, event, task).
 | `categories` | string | required | **Comma-separated names.** Empty string clears all. e.g. `"Important"` or `"Work, Follow-up"`. |
 
 This **replaces** existing categories rather than adding to them. To add `Foo` to an item that already has `Bar`, send `"Bar, Foo"`. Get the current value first via `get_mail` / `get_event` if needed.
+
+This legacy tool writes the supplied string directly, including unlisted names.
+For appointments, `outlook_update_event` supports validated, store-specific
+array parameters and can add or remove a label in one call.
 
 ---
 

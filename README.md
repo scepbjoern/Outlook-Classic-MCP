@@ -160,6 +160,26 @@ Outlook cannot reliably report sensitivity. No config migration is required.
 To opt into full private details or hide private appointments entirely, see
 [calendar privacy settings and migration](docs/tool-configuration.md#calendar-privacy).
 
+### Calendar categories
+
+Use `outlook_list_categories` with the appointment's `account` or `store_id`
+to get that store's exact category names and colors. On create, pass an array
+such as `"categories": ["Atelier", "Révision – 東京"]`. On update:
+
+| Intended change | Example fields |
+| --- | --- |
+| Keep current assignments | Omit the category fields |
+| Add or remove specific labels | `"add_categories": ["Atelier"], "remove_categories": ["Révision – 東京"]` |
+| Replace the whole list | `"replace_categories": ["Révision – 東京"]` |
+| Clear all assignments | `"replace_categories": []` |
+
+The server validates all requested names before creating or editing the
+appointment. An unknown name rejects the entire call, including any invitation.
+For recurring appointments, category changes require an explicitly selected
+whole series (`scope="series"`). Both calendar category tools reject a change
+to an individual occurrence or exception before editing any fields.
+[Calendar tool parameters and limits](skills/outlook/references/tools.md#outlook_update_event)
+
 ### Configure the available tools
 
 By default, all original 31 MCP tools are registered. A local, user-specific

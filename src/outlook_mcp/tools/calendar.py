@@ -111,6 +111,9 @@ def register(mcp, bridge) -> None:
         account: AccountSelector = None,
         store_id: StoreSelector = None,
         sensitivity: EventSensitivity = Field(default_factory=lambda: None),
+        categories: Annotated[list[str] | None, Field(
+            description="Initial categories. Use exact names from outlook_list_categories in the selected store."
+        )] = None,
     ) -> str:
         """Create a calendar event or meeting invite."""
         data = await bridge.call(
@@ -127,6 +130,7 @@ def register(mcp, bridge) -> None:
             reminder_minutes=reminder_minutes,
             recurrence=recurrence,
             sensitivity=sensitivity,
+            categories=categories,
         )
         return format_response(data, "json")
 
@@ -153,8 +157,17 @@ def register(mcp, bridge) -> None:
         scope: EventScope = None,
         original_start: OriginalStart = None,
         sensitivity: EventSensitivity = Field(default_factory=lambda: None),
+        add_categories: Annotated[list[str] | None, Field(
+            description="Add exact store category names, preserving existing assignments."
+        )] = None,
+        remove_categories: Annotated[list[str] | None, Field(
+            description="Remove exact store category names. May be combined with disjoint add_categories."
+        )] = None,
+        replace_categories: Annotated[list[str] | None, Field(
+            description="Replace all assignments with these exact store category names. Use [] to clear. Use alone."
+        )] = None,
     ) -> str:
-        """Update selected fields on an existing event. Omit sensitivity to preserve its value."""
+        """Update selected fields. Category edits require a standalone appointment or explicit series scope."""
         data = await bridge.call(
             cal_client.update_event, Access.WRITE,
             account=account,
@@ -168,6 +181,9 @@ def register(mcp, bridge) -> None:
             location=location,
             body=body,
             sensitivity=sensitivity,
+            add_categories=add_categories,
+            remove_categories=remove_categories,
+            replace_categories=replace_categories,
         )
         return format_response(data, "json")
 
