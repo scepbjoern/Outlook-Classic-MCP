@@ -8,7 +8,7 @@ from typing import Any
 
 from outlook_mcp.client.calendar_privacy import availability, classify_event, event_time
 from outlook_mcp.client.calendar_target import exception_count, require_event_store, select_event, selection_fields
-from outlook_mcp.client.categories import event_categories
+from outlook_mcp.client.categories import event_categories, require_category_scope
 from outlook_mcp.client.folders import _safe_get, get_item_by_id
 from outlook_mcp.client.mailbox import Mailbox
 from outlook_mcp.config import PrivacyMode
@@ -291,6 +291,8 @@ def update_event(
 ) -> dict[str, Any]:
     _validate_sensitivity(sensitivity)
     ev = _target(namespace, mailbox, entry_id, scope, original_start)
+    if any(names is not None for names in (add_categories, remove_categories, replace_categories)):
+        require_category_scope(scope)
     times = [_updated_time(field, value) for field, value in (("Start", start), ("End", end))
              if value is not None]
     if scope == "series" and (start is not None or end is not None):

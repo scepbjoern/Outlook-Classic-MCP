@@ -7,11 +7,16 @@ times, including offsets at daylight-saving transitions. An open-ended series ne
 no end date. An excessive scan returns an error asking for a narrower window.
 [Outlook collection semantics](https://learn.microsoft.com/en-us/office/vba/api/outlook.items.includerecurrences)
 
-| Client intent | Fields to pass to get, update, delete, respond or set-category |
+| Client intent | Calendar selection |
 | --- | --- |
 | Single appointment | Listed `store_id` and `entry_id` |
 | One occurrence, including a modified exception | Same IDs, `scope="occurrence"` and the listed `original_start` |
 | Entire series | Series IDs and `scope="series"`. Omit `original_start`. |
+
+Category writes through `outlook_update_event` and `outlook_set_category` support
+standalone appointments and explicitly selected whole series. A category request
+for one occurrence, including an existing exception, rejects the entire edit.
+The client must keep the user's selected scope when handling this error.
 
 For example, a fictional occurrence originally scheduled at 09:00 CET on
 23 November can move to 14:00 and keep the following detail arguments.

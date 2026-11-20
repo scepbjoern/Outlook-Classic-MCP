@@ -229,7 +229,8 @@ Full event detail, including attendees and their RSVP status.
 **Returns**: summary fields + `body, attendees: [{name, address, type, response}], reminder_minutes, categories`.
 
 For get, update, delete, respond and set-category, pass the listed `store_id` and `entry_id`.
-For a recurring instance also pass `scope="occurrence"` and its `original_start` with offset.
+For operations supported on a recurring instance, also pass `scope="occurrence"`
+and its `original_start` with offset. Category writes require whole-series scope.
 This selects the original slot even after a move. The full row marks a modified occurrence
 with `is_exception=true`. Use `scope="series"` alone for the master. A legacy detail
 read without scope describes the object opened by ID. Recurring writes require explicit scope.
@@ -288,8 +289,10 @@ native sensitivity and server disclosure policy intact.
 Pass each name as its own array element. Accents, Unicode and punctuation are
 preserved. Outlook's appointment setter uses the Windows regional list
 separator. If a name in the resulting assignment contains that separator, the
-server rejects the change to avoid splitting a label. For recurring events,
-these fields apply to the same occurrence or series selected for the update.
+server rejects the change to avoid splitting a label. For recurring appointments,
+category edits require explicit whole-series scope. A category request for a
+single occurrence or exception rejects the entire edit before any fields change.
+Keep the requested scope when reporting this error to the user.
 [Microsoft's AppointmentItem.Categories reference](https://learn.microsoft.com/en-us/office/vba/api/outlook.appointmentitem.categories)
 
 **Returns**: `{ status: "updated", entry_id }`. If the event has attendees, Outlook may send an updated-meeting notification when this saves.
@@ -404,7 +407,8 @@ Returns the selected delivery store's color categories: `{ count, items: [{name,
 
 ### `outlook_set_category`
 
-Replace the categories on any item (mail, event, task).
+Replace the categories on mail, tasks, standalone appointments or an explicitly
+selected whole series. Individual occurrences and exceptions reject category edits.
 
 | Param        | Type   | Default | Notes |
 | ------------ | ------ | ------- | ----- |

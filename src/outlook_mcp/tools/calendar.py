@@ -167,7 +167,7 @@ def register(mcp, bridge) -> None:
             description="Replace all assignments with these exact store category names. Use [] to clear. Use alone."
         )] = None,
     ) -> str:
-        """Update selected fields on an existing event. Omit sensitivity to preserve its value."""
+        """Update selected fields. Category edits require a standalone appointment or explicit series scope."""
         data = await bridge.call(
             cal_client.update_event, Access.WRITE,
             account=account,

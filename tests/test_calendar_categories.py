@@ -50,18 +50,24 @@ def test_create_and_list_use_the_selected_master_list(profile):
         assert detail["sensitivity"] == 0
 
 
-def test_delta_preserves_legacy_names_and_replace_explicitly_clears(profile):
+@pytest.mark.parametrize("whole_series", [False, True], ids=["standalone", "whole-series"])
+def test_delta_preserves_legacy_names_and_replace_explicitly_clears(profile, whole_series):
     ev = profile.Stores[1].GetDefaultFolder.return_value.Items.Add.return_value
+    target = dict(EXISTING)
+    if whole_series:
+        ev.RecurrenceState = 1
+        ev.GetRecurrencePattern.return_value.Exceptions = Collection()
+        target["scope"] = "series"
     ev.Categories = f"{LABEL}; {OTHER};{LEGACY}"
     call = registered(profile)
-    call("update_event", **EXISTING, subject="Nouvel atelier")
+    call("update_event", **target, subject="Nouvel atelier")
     assert ev.Categories == f"{LABEL}; {OTHER};{LEGACY}"
     for _ in range(2):
-        call("update_event", **EXISTING, add_categories=["Privat", "Privat"], remove_categories=[LABEL])
+        call("update_event", **target, add_categories=["Privat", "Privat"], remove_categories=[LABEL])
         assert ev.Categories == f"{OTHER};{LEGACY};Privat"
-    call("update_event", **EXISTING, replace_categories=[LABEL])
+    call("update_event", **target, replace_categories=[LABEL])
     assert ev.Categories == LABEL
-    call("update_event", **EXISTING, replace_categories=[])
+    call("update_event", **target, replace_categories=[])
     assert ev.Categories == ""
     assert ev.Sensitivity == 0
 
@@ -120,24 +126,35 @@ def test_private_category_receipts_and_reads(profile, privacy):
     assert (ev.Categories, ev.Sensitivity) == (LABEL, 2)
 
 
-def test_update_categories_on_middle_occurrence_only(monkeypatch):
-    monkeypatch.setattr(categories, "_list_separator", lambda: ",")
+@pytest.mark.parametrize("exception", [False, True], ids=["regular", "exception"])
+@pytest.mark.parametrize("tool,fields", [
+    ("update_event", {"add_categories": [LABEL], "subject": "Changed"}),
+    ("update_event", {"remove_categories": [OTHER], "start": "2026-11-23T09:00Z"}),
+    ("update_event", {"replace_categories": [], "sensitivity": 2}),
+    ("set_category", {"categories": "Fictional"}),
+])
+def test_category_writes_reject_occurrence_without_partial_edits(tool, fields, exception):
     ns, master, pattern = series()
-    label = "Prévu; 東京"
-    ns.Stores[1].Categories = catalog(label, OTHER)
+    ns.Stores[1].Categories = catalog(LABEL, OTHER)
     master.Categories = OTHER
     events = [occurrence(master, dt.datetime(2026, 11, day, 8, tzinfo=dt.timezone.utc)) for day in (22, 23, 24)]
+    if exception:
+        original = events[1].StartUTC
+        events[1] = occurrence(master, original, moved=original)
+        pattern.Exceptions.append(SimpleNamespace(Deleted=False, AppointmentItem=events[1]))
     for event in events:
         event.Categories = OTHER
-        mock_keywords(event, ",")
     master.Parent.Items.Restrict.return_value = events
     pattern.GetOccurrence.return_value = events[1]
     call = registered(ns)
     rows = call("list_events", **STORE, **WINDOW)["items"]
-    call("update_event", **selected(rows[1]), add_categories=[label])
-    assert call("get_event", **selected(rows[1]))["categories"] == f"{OTHER},{label}"
-    events[1].Save.assert_called_once_with()
-    for untouched in (master, events[0], events[2]):
+    target = selected(rows[1])
+    before = call("get_event", **target)
+    assert before["is_exception"] is exception
+    with pytest.raises(Exception, match="Category changes on individual series occurrences"):
+        call(tool, **target, **fields)
+    assert call("get_event", **target) == before
+    for untouched in (master, *events):
         assert untouched.Categories == OTHER
         untouched.Save.assert_not_called()
 

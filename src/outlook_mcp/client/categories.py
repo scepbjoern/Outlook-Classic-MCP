@@ -16,6 +16,11 @@ from outlook_mcp.errors import OutlookError
 _KEYWORDS = "http://schemas.microsoft.com/mapi/string/{00020329-0000-0000-C000-000000000046}/Keywords"
 
 
+def require_category_scope(scope: str | None) -> None:
+    if scope == "occurrence":
+        raise OutlookError("Category changes on individual series occurrences, including exceptions, are unsupported.")
+
+
 def list_categories(namespace: Any, mailbox: Mailbox) -> dict[str, Any]:
     items = []
     # Secondary non-Exchange stores can expose the primary store's list.
@@ -93,6 +98,7 @@ def set_category(
         raise OutlookError("Cannot verify the selected item.")
     if item_class == OL_CLASS_APPOINTMENT:
         item = select_event(namespace, mailbox, item, entry_id=entry_id, scope=scope, original_start=original_start)
+        require_category_scope(scope)
     elif scope is not None or original_start is not None:
         raise OutlookError("Recurrence selectors require a calendar appointment.")
     item.Categories = categories

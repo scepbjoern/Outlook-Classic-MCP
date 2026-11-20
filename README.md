@@ -175,7 +175,9 @@ such as `"categories": ["Atelier", "Révision – 東京"]`. On update:
 
 The server validates all requested names before creating or editing the
 appointment. An unknown name rejects the entire call, including any invitation.
-For one occurrence, use the selectors from its calendar row.
+For recurring appointments, category changes require an explicitly selected
+whole series (`scope="series"`). Both calendar category tools reject a change
+to an individual occurrence or exception before editing any fields.
 [Calendar tool parameters and limits](skills/outlook/references/tools.md#outlook_update_event)
 
 ### Configure the available tools

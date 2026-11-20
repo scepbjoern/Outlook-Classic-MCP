@@ -89,6 +89,9 @@ original and current times, proposed changes and possible impact on attendees.
 Wait for approval of that exact action. If the target cannot be identified,
 re-list and clarify. An availability-only row has no selectable identifier.
 Cadence changes require editing the recurrence pattern in Outlook.
+For a request to change categories on one occurrence or exception, explain the
+tool limitation and keep the requested scope. A whole-series category edit
+requires an explicit request for the entire series.
 
 ### Filesystem paths
 

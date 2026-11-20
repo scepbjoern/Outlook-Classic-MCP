@@ -174,8 +174,10 @@ def test_provider_reopens_exception_directly_and_preserves_offset_on_move():
     call("update_event", **args, start="2026-10-25T02:30:00+01:00", end="2026-10-25T03:00:00+01:00")
     assert item.StartUTC == dt.datetime(2026, 10, 25, 1, 30, tzinfo=UTC)
     assert item.EndUTC == dt.datetime(2026, 10, 25, 2, tzinfo=UTC)
-    call("set_category", **args, categories="Synthetic category")
-    assert item.Categories == "Synthetic category" and master.Categories == ""
+    with pytest.raises(Exception, match="Category changes on individual series occurrences"):
+        call("set_category", **args, categories="Synthetic category")
+    assert item.Categories == master.Categories == ""
+    item.Save.assert_called_once_with()  # Only the earlier time change.
     master.Save.assert_not_called()
 
 
