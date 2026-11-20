@@ -1,7 +1,7 @@
 """Register allowed tools and authorize their calls on the COM thread."""
 
 from outlook_mcp.client import account as account_client
-from outlook_mcp.client.mailbox import Access, call_in_mailbox
+from outlook_mcp.client.mailbox import Access, MailboxSelection, call_in_mailbox
 
 from outlook_mcp.config import TOOL_GROUPS, ToolConfigError, ToolPolicy
 
@@ -36,12 +36,12 @@ class _MailboxBridge:
         self._accounts = policy.accounts
         self._calendar_privacy = policy.calendar_privacy
 
-    async def call(self, operation, access: Access, *, account, store_id, **kwargs):
+    async def call(self, operation, access: Access, *, account, store_id, local_write=False, **kwargs):
         return await self._bridge.call(
-            call_in_mailbox, retry_on_disconnect=Access.WRITE not in access,
+            call_in_mailbox, retry_on_disconnect=Access.WRITE not in access and not local_write,
             operation=operation, policy=self._accounts,
             calendar_privacy=self._calendar_privacy,
-            access=access, account=account, store_id=store_id, arguments=kwargs,
+            access=access, selection=MailboxSelection(account, store_id), arguments=kwargs,
         )
 
     async def identity(self):

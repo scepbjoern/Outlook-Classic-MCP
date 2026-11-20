@@ -65,7 +65,9 @@ def test_discovery_and_calls_across_restarts(tmp_path):
             assert bridge_log.read_text(encoding="utf-8").splitlines() == ["constructed"]
             allowed = await session.call_tool("outlook_whoami", {"response_format": "json"})
             assert not allowed.isError
-            assert json.loads(allowed.content[0].text) == {"user": "Synthetic User"}
+            identity = json.loads(allowed.content[0].text)
+            assert identity["readiness"] == "ready" and identity["accounts"] == []
+            assert identity["profile_name"] is None and identity["current_user"] is None
             assert bridge_log.read_text(encoding="utf-8").splitlines() == ["constructed", "whoami"]
 
         config.write_text('{"tools":{"disabled_groups":["mail"]}}', encoding="utf-8")
@@ -149,6 +151,8 @@ def test_private_create_is_absent_from_stdio_debug_log(tmp_path):
                     "start": "2026-11-23T10:00", "end": "2026-11-23T11:00",
                 })
                 assert not result.isError and secret not in result.model_dump_json()
+                receipt = json.loads(result.content[0].text)
+                assert receipt["local_outcome"] == "saved" and receipt["exchange_sync"] == "unverified"
 
     asyncio.run(exercise())
     trace = log.read_text(encoding="utf-8", errors="replace")

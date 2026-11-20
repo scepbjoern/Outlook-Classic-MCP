@@ -220,7 +220,7 @@ def test_scoped_private_exception_receipts_and_details(policy):
             assert selected(result) == args
     receipt = call("delete_event", **args)
     if policy != "full":
-        assert receipt == {"status": "deleted"}
+        assert receipt == {"status": "deleted", "local_outcome": "completed", "exchange_sync": "unverified"}
     item.Delete.assert_called_once_with()
     master.Delete.assert_not_called()
 

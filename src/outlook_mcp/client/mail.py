@@ -20,7 +20,7 @@ from outlook_mcp.constants import (
     OL_FOLDER_SENT,
     OL_MAIL_ITEM,
 )
-from outlook_mcp.errors import OutlookError
+from outlook_mcp.errors import OutlookError, WriteOutcomeUnknown
 from outlook_mcp.utils.formatting import from_iso, to_iso, truncate
 from outlook_mcp.utils.paths import validate_attachment_path, validate_filename, validate_output_dir
 from outlook_mcp.utils.safety import safe_dasl
@@ -333,28 +333,38 @@ def send_mail(
     for raw_path in attachments or []:
         mail.Attachments.Add(validate_attachment_path(raw_path))
 
-    if inspector is not None:
-        # Calling Send() while a never-displayed inspector is still attached
-        # fails with E_INVALIDARG (0x80070057, "parameter is incorrect").
-        # Save, close the inspector, then reload the item fresh from its store.
-        mail.Save()
-        entry_id = mail.EntryID
-        inspector.Close(OL_INSPECTOR_SAVE)
-        inspector = None
-        mail = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_MAIL)
+    saved = False
+    try:
+        if inspector is not None:
+            # Calling Send() while a never-displayed inspector is still attached
+            # fails with E_INVALIDARG (0x80070057, "parameter is incorrect").
+            # Save, close the inspector, then reload the item fresh from its store.
+            mail.Save()
+            saved = True
+            entry_id = mail.EntryID
+            inspector.Close(OL_INSPECTOR_SAVE)
+            inspector = None
+            mail = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_MAIL)
 
-    if save_only:
-        mail.Save()
-        return {
-            "status": "saved_to_drafts",
-            "entry_id": mail.EntryID,
-            "store_id": mailbox.store_id,
-            "subject": mail.Subject,
-        }
+        if save_only:
+            mail.Save()
+            saved = True
+            return {
+                "status": "saved_to_drafts", "local_outcome": "saved",
+                "entry_id": mail.EntryID,
+                "store_id": mailbox.store_id,
+                "subject": mail.Subject,
+            }
 
-    _send_from(mailbox, mail)
+        _send_from(mailbox, mail)
+    except Exception as exc:
+        if saved:
+            raise WriteOutcomeUnknown(
+                "Outlook saved a draft locally before a later step failed. Check Drafts, Outbox and Sent Items."
+            ) from exc
+        raise
     return {
-        "status": "sent",
+        "status": "sent", "local_outcome": "submitted",
         "store_id": mailbox.store_id,
         "to": to,
         "cc": cc or [],
@@ -390,7 +400,7 @@ def reply_mail(
     reply_subject = reply.Subject
     _send_from(mailbox, reply)
     return {
-        "status": "sent",
+        "status": "sent", "local_outcome": "submitted",
         "reply_all": reply_all,
         "in_reply_to": entry_id,
         "store_id": mailbox.store_id,
@@ -427,7 +437,10 @@ def forward_mail(
     # and send duplicates, even though the original Send() succeeded.
     fwd_subject = fwd.Subject
     _send_from(mailbox, fwd)
-    return {"status": "sent", "forwarded": entry_id, "to": to, "subject": fwd_subject, "store_id": mailbox.store_id}
+    return {
+        "status": "sent", "local_outcome": "submitted", "forwarded": entry_id,
+        "to": to, "subject": fwd_subject, "store_id": mailbox.store_id,
+    }
 
 
 def move_mail(namespace: Any, mailbox: Mailbox, *, entry_id: str, target_folder: str) -> dict[str, Any]:

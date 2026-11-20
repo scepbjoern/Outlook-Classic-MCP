@@ -327,19 +327,18 @@ For package builds, origin checks and the manual publication policy, see
 
 ## Troubleshooting
 
-**"Outlook COM thread did not become ready"** — Outlook didn't
-auto-launch. Open it manually, sign in, then restart the MCP client
-so it re-spawns the server.
+**Outlook is starting, reconnecting or unavailable.** Open classic Outlook in
+your unlocked Windows session, complete any profile or sign-in prompt, then
+check `outlook_whoami`. For timeout recovery, offline writes and Exchange
+verification, see [Outlook readiness and write receipts](docs/outlook-readiness.md).
 
 **Inspector shows ENOENT for the python path** — known Windows
 quirk; use forward slashes (`C:/Users/you/...`) instead of
 backslashes.
 
-**Send / reply gets blocked silently** — Outlook → File → Options →
-Trust Center → Programmatic Access. The setting that works while
-you're using the server is "Never warn me about suspicious activity
-(not recommended)" — or have IT add the Python interpreter as a
-trusted publisher.
+**Send or reply is waiting on Outlook.** Check the interactive Outlook window
+for a security or sign-in prompt. After a timeout, inspect the selected store's
+Outbox and Sent Items before considering another send.
 
 ---
 

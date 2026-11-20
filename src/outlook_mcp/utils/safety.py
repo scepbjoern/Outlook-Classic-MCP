@@ -55,7 +55,7 @@ def safe_call(fn: Callable[..., Any]) -> Callable[..., Any]:
         try:
             return await fn(*args, **kwargs)
         except OutlookError as exc:
-            raise RuntimeError(str(exc)) from exc
+            raise RuntimeError(str(exc)) from None
         except TimeoutError:
             raise
         except BaseException as exc:  # noqa: BLE001

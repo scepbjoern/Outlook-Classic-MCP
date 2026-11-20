@@ -16,6 +16,16 @@ class OutlookError(Exception):
     """
 
 
+class WriteOutcomeUnknown(OutlookError):
+    """Safe caller guidance for a side effect that may have completed."""
+
+    def __init__(self, detail: str = "Outlook could not complete the operation reliably.") -> None:
+        super().__init__(
+            f"{detail} The overall outcome is unknown. Exchange synchronization is unverified. "
+            "Do not repeat automatically. Inspect the selected store or output directory first."
+        )
+
+
 # HRESULTs that mean the COM channel to OUTLOOK.EXE is gone (the process
 # exited or crashed), as opposed to an error *inside* a live Outlook.
 _DISCONNECT_HRESULTS = frozenset(

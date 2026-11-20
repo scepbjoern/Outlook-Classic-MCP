@@ -26,7 +26,7 @@ from outlook_mcp.constants import (
     OL_RECURS_YEARLY,
     OL_TO,
 )
-from outlook_mcp.errors import ITEM_NOT_FOUND, OutlookError
+from outlook_mcp.errors import ITEM_NOT_FOUND, OutlookError, WriteOutcomeUnknown
 from outlook_mcp.schemas import Recurrence
 from outlook_mcp.utils.formatting import from_iso, to_com, to_iso, truncate
 
@@ -259,16 +259,23 @@ def create_event(
     if sensitivity is not None:
         appt.Sensitivity = sensitivity
     appt.Save()
-    result = {"status": "created"}
-    mode = classify_event(appt, mailbox.privacy, requested=sensitivity).mode
-    if mode == PrivacyMode.FULL:
-        result.update(entry_id=appt.EntryID, store_id=mailbox.store_id, subject=appt.Subject,
-                      start=to_iso(appt.Start), end=to_iso(appt.End))
-    elif mode == PrivacyMode.BUSY_ONLY:
-        result.update(availability(appt))
-    if attendees:
-        mailbox.bind_sender(appt)
-        appt.Send()
+    try:
+        result = {"status": "created", "local_outcome": "saved"}
+        mode = classify_event(appt, mailbox.privacy, requested=sensitivity).mode
+        if mode == PrivacyMode.FULL:
+            result.update(entry_id=appt.EntryID, store_id=mailbox.store_id, subject=appt.Subject,
+                          start=to_iso(appt.Start), end=to_iso(appt.End))
+        elif mode == PrivacyMode.BUSY_ONLY:
+            result.update(availability(appt))
+        if attendees:
+            mailbox.bind_sender(appt)
+            appt.Send()
+            result["local_outcome"] = "saved_and_submitted"
+    except Exception as exc:
+        raise WriteOutcomeUnknown(
+            "Outlook saved the appointment locally. A later step failed. "
+            "Check the calendar and any invitation in Outbox or Sent Items."
+        ) from exc
     return result
 
 
@@ -356,7 +363,11 @@ def respond_event(
     resp = ev.Respond(code, True, False)
     if send_response:
         if resp is None:
-            raise OutlookError("Outlook updated the meeting without returning a response to send.")
-        mailbox.bind_sender(resp)
-        resp.Send()
+            raise WriteOutcomeUnknown("Outlook updated the meeting without returning a response to send.")
+        try:
+            mailbox.bind_sender(resp)
+            resp.Send()
+        except Exception as exc:
+            raise WriteOutcomeUnknown("Outlook processed the meeting response. Its submission is uncertain.") from exc
+        result["local_outcome"] = "submitted"
     return result

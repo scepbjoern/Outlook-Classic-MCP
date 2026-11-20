@@ -63,6 +63,9 @@ def test_all_actions_and_explicit_downgrade(mode):
     category = call("set_category", categories=SECRET, **by_id)
     response = call("respond_event", response="accept", send_response=False, **by_id)
     deleted = call("delete_event", **by_id)
+    for receipt in (created, changed, category, response, deleted):
+        assert receipt.pop("exchange_sync") == "unverified"
+        assert receipt.pop("local_outcome") == ("saved" if receipt is created else "completed")
     if mode == "full":
         assert created["subject"] == category["categories"] == deleted["subject"] == SECRET
         assert changed["entry_id"] == ev.EntryID
@@ -186,7 +189,7 @@ def test_conflicting_saved_sensitivity_is_unreliable(mode, expected):
     ev.Save.side_effect = lambda: setattr(ev, "Sensitivity", 0)
     result = registered(ns, privacy={"default": mode})(
         "create_event", subject=SECRET, sensitivity=2, start=START.isoformat(), end=END.isoformat(), **SELECT)
-    assert result == expected
+    assert result == {**expected, "local_outcome": "saved", "exchange_sync": "unverified"}
 
 
 def test_folder_metadata_hides_raw_counts_under_exclude():
