@@ -111,6 +111,13 @@ def _format_sensitivity(event: dict[str, Any]) -> str:
     return label if value is None else f"{label} ({value})"
 
 
+def _calendar_selection(event: dict[str, Any]) -> str:
+    if event.get("scope") == "occurrence":
+        kind = " (modified exception)" if event.get("is_exception") else ""
+        return f"scope: `occurrence`{kind}, original_start: `{event['original_start']}`"
+    return "scope: `series` (entire series)"
+
+
 def _render_collection(data: dict[str, Any]) -> str:
     items = data["items"]
     sample = items[0]
@@ -152,6 +159,8 @@ def _render_collection(data: dict[str, Any]) -> str:
                 lines.append(f"  - busy status: {ev['busy_status']}")
             if ev.get("entry_id"):
                 lines.append(f"  - id: `{ev['entry_id']}`")
+                if ev.get("scope"):
+                    lines.append(f"  - {_calendar_selection(ev)}")
     elif "full_name" in sample:
         for c in items:
             line = f"- **{c.get('full_name')}**"
@@ -218,6 +227,8 @@ def _render_detail(data: dict[str, Any]) -> str:
             lines.append(f"**Received:** {data['received']}")
         if data.get("start"):
             lines.append(f"**When:** {data['start']} -> {data.get('end')}")
+        if data.get("scope"):
+            lines.append(_calendar_selection(data))
         if "sensitivity" in data:
             lines.append(f"**Sensitivity:** {_format_sensitivity(data)}")
         if data.get("location"):

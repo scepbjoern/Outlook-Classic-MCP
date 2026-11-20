@@ -8,7 +8,7 @@ from pydantic import Field
 
 from outlook_mcp.client import categories as cat_client
 from outlook_mcp.client.mailbox import Access
-from outlook_mcp.schemas import AccountSelector, StoreSelector
+from outlook_mcp.schemas import AccountSelector, EventScope, OriginalStart, StoreSelector
 from outlook_mcp.utils.formatting import format_response
 from outlook_mcp.utils.safety import safe_call, safe_item_call
 
@@ -62,6 +62,8 @@ def register(mcp, bridge) -> None:
         ],
         account: AccountSelector = None,
         store_id: StoreSelector = None,
+        scope: EventScope = None,
+        original_start: OriginalStart = None,
     ) -> str:
         """Replace the categories on an item (mail / event / task)."""
         data = await bridge.call(
@@ -69,6 +71,8 @@ def register(mcp, bridge) -> None:
             account=account,
             store_id=store_id,
             entry_id=entry_id,
+            scope=scope,
+            original_start=original_start,
             categories=categories,
         )
         return format_response(data, "json")

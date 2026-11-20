@@ -228,8 +228,11 @@ Full event detail, including attendees and their RSVP status.
 
 **Returns**: summary fields + `body, attendees: [{name, address, type, response}], reminder_minutes, categories`.
 
-Detail and update calls use the appointment resolved by Outlook for the supplied EntryID and store.
-Expanded occurrences can share a series EntryID. These calls have no occurrence-date selector.
+For get, update, delete, respond and set-category, pass the listed `store_id` and `entry_id`.
+For a recurring instance also pass `scope="occurrence"` and its `original_start` with offset.
+This selects the original slot even after a move. The full row marks a modified occurrence
+with `is_exception=true`. Use `scope="series"` alone for the master. A legacy detail
+read without scope describes the object opened by ID. Recurring writes require explicit scope.
 Detail uses the same privacy policy as the list. A returned master also respects its live exceptions. A hidden item produces the standard missing-item error.
 
 ### `outlook_create_event`
@@ -257,7 +260,8 @@ Confirm attendee list, times, recurrence and any explicitly selected sensitivity
 
 ### `outlook_update_event`
 
-Update fields on an event. Only non-null fields are written. Does **not** modify recurrence — for cadence changes, delete and recreate.
+Update the supplied fields on the selected target. Edit cadence in Outlook.
+Changing series start or end requires a verified empty exceptions collection.
 
 | Param      | Type     | Default | Notes |
 | ---------- | -------- | ------- | ----- |
@@ -273,7 +277,8 @@ Update fields on an event. Only non-null fields are written. Does **not** modify
 
 ### `outlook_delete_event`
 
-Delete a calendar event. **If the event has attendees, this sends a cancellation notice.**
+Delete the selected appointment, occurrence or entire series. Preview the affected attendees
+and scope. The tool calls Outlook's native Delete without an additional send.
 
 **Returns**: `{ status: "deleted", subject, entry_id }`.
 

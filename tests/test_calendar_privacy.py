@@ -9,7 +9,7 @@ import pytest
 
 from outlook_mcp.client.calendar_privacy import availability, classify_event
 from outlook_mcp.config import PrivacyMode, ToolConfigError, parse_tool_policy
-from tests.test_mailbox import Collection, make_profile, registered
+from tests.test_mailbox import WINDOW, Collection, make_profile, registered
 
 
 SELECT = {"store_id": "store-b"}
@@ -98,7 +98,7 @@ def test_unreadable_property_and_no_reads_of_private_fields(mode):
     for field in ("Subject", "Body", "Recipients", "Location", "Organizer", "Categories"):
         setattr(type(ev), field, forbidden)
     call = registered(ns, privacy={"default": mode})
-    result = call("list_events", **SELECT)
+    result = call("list_events", **WINDOW, **SELECT)
     if mode == "exclude":
         assert result["items"] == [] and result["count"] == 0
         with pytest.raises(Exception, match="Item not found"):
@@ -124,7 +124,7 @@ def test_private_exception_and_normal_master_share_id(mode):
     items.Restrict.side_effect = lambda _: [occurrence] if items.IncludeRecurrences else [master]
     call = registered(ns, privacy={"default": mode})
     for expanded in (False, True):
-        rows = call("list_events", include_recurrences=expanded, **SELECT)["items"]
+        rows = call("list_events", **WINDOW, include_recurrences=expanded, **SELECT)["items"]
         if mode == "exclude":
             assert rows == []
         elif mode == "busy_only":
@@ -156,10 +156,11 @@ def test_inaccessible_exception_and_unknown_recurrence_state_fail_closed():
 def test_hidden_row_does_not_consume_limit_or_leak_in_mail_search():
     ns = make_profile()
     ev = appointment(ns)
-    visible = SimpleNamespace(Parent=ev.Parent, Sensitivity=0, RecurrenceState=0, Subject="Visible")
+    visible = SimpleNamespace(Parent=ev.Parent, Sensitivity=0, RecurrenceState=0, Subject="Visible",
+                              Start=START, End=END)
     ev.Parent.Items.Restrict.return_value = [ev, visible]
     call = registered(ns, privacy={"default": "exclude"})
-    result = call("list_events", limit=1, **SELECT)
+    result = call("list_events", **WINDOW, limit=1, **SELECT)
     assert [r["subject"] for r in result["items"]] == ["Visible"] and result["count"] == 1
     ev.Parent.Name = "Synthetic calendar"
     assert call("search_mails", folder="calendar", query="fictional", **SELECT)["items"] == []

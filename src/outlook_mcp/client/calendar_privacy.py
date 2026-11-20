@@ -68,13 +68,20 @@ def classify_event(event: Any, policy: PrivacyMode, *, requested: int | None = N
     return Disclosure(_series_mode(event, policy, _mode(sensitivity, policy)), sensitivity)
 
 
+def event_time(event: Any, field: str) -> str | None:
+    """Prefer Outlook's UTC instant to distinguish repeated local clock times."""
+    utc = _safe_get(event, field + "UTC")
+    if isinstance(utc, dt.datetime):
+        return utc.replace(tzinfo=dt.timezone.utc).astimezone().isoformat()
+    local = _safe_get(event, field)
+    return to_iso(local) if isinstance(local, dt.datetime) else None
+
+
 def availability(event: Any) -> dict[str, Any]:
-    # Do not stringify malformed provider values into the allowed fields.
-    start, end = _safe_get(event, "Start"), _safe_get(event, "End")
     busy = _safe_get(event, "BusyStatus")
     return {
         "subject": "Appointment",
-        "start": to_iso(start) if isinstance(start, dt.datetime) else None,
-        "end": to_iso(end) if isinstance(end, dt.datetime) else None,
+        "start": event_time(event, "Start"),
+        "end": event_time(event, "End"),
         "busy_status": busy if type(busy) is int and 0 <= busy <= 4 else None,
     }

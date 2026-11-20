@@ -5,10 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from outlook_mcp.client.calendar_privacy import classify_event
-from outlook_mcp.client.mailbox import Mailbox
+from outlook_mcp.client.calendar_target import select_event
 from outlook_mcp.client.folders import get_item_by_id
+from outlook_mcp.client.mailbox import Mailbox
 from outlook_mcp.config import PrivacyMode
 from outlook_mcp.constants import OL_CLASS_APPOINTMENT
+from outlook_mcp.errors import OutlookError
 
 
 def list_categories(namespace: Any, mailbox: Mailbox) -> dict[str, Any]:
@@ -29,12 +31,20 @@ def set_category(
     *,
     entry_id: str,
     categories: str,
+    scope: str | None = None,
+    original_start: str | None = None,
 ) -> dict[str, Any]:
     item = get_item_by_id(namespace, mailbox, entry_id)
+    item_class = item.Class
+    if type(item_class) is not int:
+        raise OutlookError("Cannot verify the selected item.")
+    if item_class == OL_CLASS_APPOINTMENT:
+        item = select_event(namespace, mailbox, item, entry_id=entry_id, scope=scope, original_start=original_start)
+    elif scope is not None or original_start is not None:
+        raise OutlookError("Recurrence selectors require a calendar appointment.")
     item.Categories = categories
     item.Save()
-    item_class = item.Class
-    if type(item_class) is not int or (
+    if (
         item_class == OL_CLASS_APPOINTMENT
         and classify_event(item, mailbox.privacy).mode != PrivacyMode.FULL
     ):

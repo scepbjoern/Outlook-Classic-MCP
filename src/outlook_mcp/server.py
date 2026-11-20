@@ -44,6 +44,9 @@ Tool categories (all prefixed `outlook_`):
 Most read tools accept response_format='markdown' (default) or 'json'.
 Use the EntryID and StoreID from an item for detail/edit/delete calls.
 Calendar availability-only rows have no item identifiers.
+For recurring appointments copy scope and original_start from the selected row.
+For an entire series explicitly select scope=series and omit original_start.
+Preview the exact scope, affected meeting and proposed changes for user approval before a write.
 
 All datetimes are in the USER'S LOCAL timezone with an explicit UTC
 offset (e.g. 2026-06-10T16:33:22+05:00). Present them as-is — do NOT

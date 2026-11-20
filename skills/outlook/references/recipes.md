@@ -200,16 +200,18 @@ If the user prefers a count, use `occurrences` instead of `end_date`. Omit both 
 ## 12. Reschedule an existing event
 
 ```
-1. outlook_list_events(...) or outlook_get_event(entry_id) → confirm correct event
-2. outlook_update_event(
-      entry_id=<id>,
+1. outlook_list_events(...) → select the occurrence and copy its target fields
+2. outlook_get_event(store_id=<store>, entry_id=<id>, scope="occurrence", original_start=<original slot>)
+3. Preview the account, occurrence, old and new times and meeting impact. Wait for approval.
+4. outlook_update_event(
+      store_id=<store>, entry_id=<id>, scope="occurrence", original_start=<original slot>,
       start="<new start>",
       end="<new end>")
 ```
 
-`update_event` rewrites only the fields you pass. It cannot change recurrence cadence — for that, delete and recreate.
+`update_event` rewrites only the fields you pass. For a single appointment omit the recurrence selectors. For the entire series use `scope="series"` alone. Time changes on a series with exceptions are blocked. Edit cadence in Outlook.
 
-If the event has attendees, Outlook will likely send an updated-meeting notification when the change saves. Mention that to the user.
+Outlook handles the meeting save. The tool makes no separate send call.
 
 ## 13. Accept or decline a meeting invite
 
@@ -221,6 +223,7 @@ If the event has attendees, Outlook will likely send an updated-meeting notifica
 ```
 
 Pass `send_response=false` if the user wants to update locally without notifying the organizer.
+For recurring meetings, pass the approved scope and, for an occurrence, its original slot.
 
 ## 14. Look up a contact
 

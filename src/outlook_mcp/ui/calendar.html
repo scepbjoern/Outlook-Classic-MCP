@@ -87,7 +87,7 @@ function load(d) {
   toolArgs = { ...toolArgs, store_id: d.store_id };
   openEvent = null;
   detailCache.clear();
-  events = d.items.slice().sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  events = d.items.slice().sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   $("error").innerHTML = "";
   const fmtD = iso => { const x = new Date(iso); return isNaN(x) ? "" : MONTHS[x.getMonth()] + " " + x.getDate(); };
   if (d.start && d.end) $("range").textContent = fmtD(d.start) + " – " + fmtD(d.end);
@@ -135,6 +135,8 @@ function render() {
         '<div class="main">' +
           '<div class="subj">' + esc(ev.subject || "(no subject)") + "</div>" +
           ("busy_status" in ev ? '<div class="where">' + busyLabel(ev.busy_status) + "</div>" : "") +
+          (ev.scope === "series" ? '<div class="where">Entire series</div>' : "") +
+          (ev.is_exception ? '<div class="where">Modified occurrence · original start ' + esc(ev.original_start) + "</div>" : "") +
           (ev.sensitivity_label ? '<div class="where">Sensitivity: ' + esc(ev.sensitivity_label) + "</div>" : "") +
           ((ev.location || ev.organizer)
             ? '<div class="where">' +
@@ -184,7 +186,10 @@ $("agenda").addEventListener("click", async ev => {
   render();
   if (!detailCache.has(event)) {
     try {
-      const r = await MCPApp.callTool("outlook_get_event", { entry_id: event.entry_id, store_id: event.store_id });
+      const target = { entry_id: event.entry_id, store_id: event.store_id };
+      if (event.scope) target.scope = event.scope;
+      if (event.original_start) target.original_start = event.original_start;
+      const r = await MCPApp.callTool("outlook_get_event", target);
       const d = MCPApp.data(r);
       if (events.includes(event)) detailCache.set(event, d || { body: "Details unavailable." });
     } catch (e) {
