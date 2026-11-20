@@ -66,6 +66,7 @@ def test_discovery_and_calls_across_restarts(tmp_path):
             allowed = await session.call_tool("outlook_whoami", {"response_format": "json"})
             assert not allowed.isError
             identity = json.loads(allowed.content[0].text)
+            assert identity["requires_account_selection"]
             assert identity["readiness"] == "ready" and identity["accounts"] == []
             assert identity["profile_name"] is None and identity["current_user"] is None
             assert bridge_log.read_text(encoding="utf-8").splitlines() == ["constructed", "whoami"]
@@ -91,6 +92,63 @@ def test_registered_tool_rejects_forbidden_store_over_stdio(tmp_path):
             assert "outlook_list_events" in {tool.name for tool in (await session.list_tools()).tools}
             result = await session.call_tool("outlook_list_events", {"store_id": "store-a"})
             assert result.isError and "does not grant read" in result.content[0].text
+
+    asyncio.run(exercise())
+
+
+def test_read_only_calendar_walkthrough_then_create(tmp_path):
+    config = tmp_path / "outlook-classic-mcp" / "config.json"
+    config.parent.mkdir()
+    read_tools = {"outlook_whoami", "outlook_list_events", "outlook_get_event"}
+    policy = {
+        "version": 2,
+        "tools": {"enabled_tools": sorted(read_tools)},
+        "accounts": {"read": ["a@example.test", "b@example.test"], "write": []},
+        "calendar_privacy": {"default": "busy_only", "accounts": {"b@example.test": "exclude"}},
+    }
+    config.write_text(json.dumps(policy), encoding="utf-8")
+
+    async def exercise():
+        async with session_at(tmp_path) as session:
+            assert {t.name for t in (await session.list_tools()).tools} == read_tools
+            result = await session.call_tool("outlook_whoami", {"response_format": "json"})
+            identity = json.loads(result.content[0].text)
+            assert identity["requires_account_selection"]
+            accounts = {row["smtp_address"]: row for row in identity["accounts"]}
+            assert set(accounts) == {"a@example.test", "b@example.test"}
+            assert all(row["read"] and not row["write"] for row in accounts.values())
+            query = {"start": "2026-11-23", "end": "2026-11-24", "limit": 20, "response_format": "json"}
+            for address, row in accounts.items():
+                listing = await session.call_tool("outlook_list_events", {**query, "store_id": row["store_id"]})
+                assert not listing.isError
+                items = listing.structuredContent["items"]
+                if address == "a@example.test":
+                    slot, = items
+                    assert set(slot) == {"subject", "start", "end", "busy_status"}
+                    assert slot["subject"] == "Appointment" and slot["busy_status"] == 2
+                else:
+                    assert items == []
+
+        policy["tools"]["enabled_tools"].append("outlook_create_event")
+        policy["accounts"]["write"] = ["b@example.test"]
+        config.write_text(json.dumps(policy), encoding="utf-8")
+        async with session_at(tmp_path) as session:
+            assert {t.name for t in (await session.list_tools()).tools} == read_tools | {"outlook_create_event"}
+            identity = await session.call_tool("outlook_whoami", {"response_format": "json"})
+            rows = json.loads(identity.content[0].text)["accounts"]
+            target, = [row for row in rows if row["write"]]
+            assert target["smtp_address"] == "b@example.test"
+            result = await session.call_tool("outlook_create_event", {
+                "store_id": target["store_id"], "subject": "Focus block",
+                "start": "2026-11-24T10:00:00+01:00", "end": "2026-11-24T10:30:00+01:00",
+                "sensitivity": 2, "reminder_minutes": 15,
+            })
+            assert not result.isError
+            receipt = json.loads(result.content[0].text)
+            assert receipt["status"] == "created"
+            assert receipt["local_outcome"] == "saved" and receipt["exchange_sync"] == "unverified"
+            assert {"entry_id", "subject", "store_id", "start", "end", "busy_status"}.isdisjoint(receipt)
+            assert "Focus block" not in result.model_dump_json()
 
     asyncio.run(exercise())
 

@@ -4,17 +4,13 @@ Every quirk and failure mode worth knowing, organized by *what the user sees*. R
 
 ## "You said you sent it but I don't see it in Sent Items."
 
-Almost always **Outlook's Programmatic Access security setting** silently blocking the send. On corporate-managed Outlook installs, sending mail from automation can be gated by Trust Center. Symptoms: `send_mail` / `reply_mail` / `forward_mail` returns success, the mail never appears in Sent Items, no error is surfaced to you.
+Check the selected account and the reported result. A missing message alone cannot establish whether Outlook saved or sent it. Check the authorized store before any retry and follow the operator's managed Outlook settings.
 
-**Tell the user**: open Outlook → File → Options → Trust Center → Trust Center Settings → Programmatic Access. The setting that lets the integration send is "Never warn me about suspicious activity". On locked-down corporate machines IT may have to whitelist the Python interpreter as a trusted publisher, in which case there's nothing the user can do at the application layer.
-
-`delete_mail` is also gated by this setting.
-
-## Sender filter "from_address=alice@example.com" returns nothing
+## Sender filter "from_address=alice@example.test" returns nothing
 
 Exchange senders' `from_address` is **not an SMTP address**. It's an `EX:/O=ExchangeLabs/OU=...` distinguished name. The substring filter on `list_mails` matches against this raw string, which won't contain the SMTP address.
 
-**Fix**: use `outlook_search_mails(scope="from", query="sarah@example.com")` — since v0.2.5 the `from` scope also matches the real SMTP address (via the MAPI sender-SMTP property), so it works for Exchange senders. For `list_mails`'s `from_address` filter, pass a name fragment that *will* appear in the DN — usually the first or last name.
+**Fix**: use `outlook_search_mails(scope="from", query="sarah@example.test")` — since v0.2.5 the `from` scope also matches the real SMTP address (via the MAPI sender-SMTP property), so it works for Exchange senders. For `list_mails`'s `from_address` filter, pass a name fragment that *will* appear in the DN — usually the first or last name.
 
 ## Times look wrong / shifted by a few hours
 
@@ -55,10 +51,10 @@ Update and delete call Outlook's native Save and Delete on the selected appointm
 **Workaround**: build the reply yourself and save it via `outlook_send_mail(save_only=true)`:
 
 ```
-to = [original.from_address]                        # or all of original.to/cc for reply-all
+to = [verified sender SMTP address]                        # or all of original.to/cc for reply-all
 subject = "Re: " + original.subject                 # don't double-prefix
 body = your_reply + "\n\n" + original.body          # quote manually
-outlook_send_mail(to=to, subject=subject, body=body, save_only=true)
+outlook_send_mail(store_id=store, to=to, subject=subject, body=body, save_only=true)
 ```
 
 Tell the user the draft is in the Drafts folder for them to review.
@@ -71,7 +67,7 @@ Moving an item with `outlook_move_mail` returns a `new_entry_id`. The original `
 
 ## "Schedule it daily for the next 6 months" — and then they want to change cadence
 
-`outlook_update_event` cannot modify the recurrence pattern. It only rewrites scalar fields (subject, start, end, location, body, sensitivity).
+`outlook_update_event` cannot modify the recurrence pattern. It supports field and category edits within the selected scope.
 
 Edit the recurrence pattern in Outlook when cadence, interval or end date must change. The series may already contain moved, private or deleted occurrences.
 
@@ -82,9 +78,9 @@ Edit the recurrence pattern in Outlook when cadence, interval or end date must c
 **Pattern**: read first, merge, then set.
 
 ```
-existing = outlook_get_mail(entry_id, include_body=false).categories
+existing = outlook_get_mail(store_id=store, entry_id=entry_id, include_body=false).categories
 new_value = ", ".join(filter(None, [existing, "Important"]))
-outlook_set_category(entry_id=entry_id, categories=new_value)
+outlook_set_category(store_id=store, entry_id=entry_id, categories=new_value)
 ```
 
 To **clear** all categories, pass an empty string.
@@ -112,21 +108,9 @@ The integration enforces a **user-profile sandbox** on all filesystem paths. Pas
 
 Relative paths like `Documents/file.pdf` always fail. Always pass `C:\\Users\\<user>\\Documents\\file.pdf` (or with forward slashes — both work).
 
-## First call of the session takes 5–10 seconds
+## A write was interrupted
 
-Outlook's COM surface needs to warm up the first time. Subsequent calls are fast. **Don't retry** as if the slow first call had failed; you'll just queue up duplicate sends.
-
-## The user closed Outlook mid-session
-
-The server reconnects after a lost COM connection. It may retry a read. If a write was interrupted, check the selected store to determine the outcome before repeating it.
-
-If the call still errors with "could not be relaunched", Outlook genuinely failed to start (crash-recovery dialog, profile prompt, pending update). Tell the user to open Outlook manually, then retry.
-
-## "Outlook is open but the integration says it isn't ready"
-
-The user is probably running the **new** Outlook (`olk.exe`), which doesn't expose COM. Only **classic** Outlook (`OUTLOOK.EXE`, the one bundled with Microsoft 365) is supported.
-
-**Tell the user**: in the new Outlook, top-right, toggle "New Outlook" off. Then reopen and the integration will reconnect.
+Inspect the selected store before repeating a call. A provider may have saved an item before the client received its result. Tool discovery alone cannot establish Outlook connectivity or sync status.
 
 ## DASL filter syntax errors when using `scope='dasl'`
 
@@ -157,7 +141,7 @@ Use `outlook_whoami` to identify the authorized delivery store. Pass its SMTP `a
 The address you passed to `attendees=` (or in `to`/`cc`/`bcc`) couldn't be resolved against the user's address book or directory. Possible causes:
 
 - A typo in the address.
-- An internal alias that the user's directory recognizes (`alice`) but Outlook needs the full SMTP form for (`alice@example.com`).
+- An internal alias that the user's directory recognizes (`alice`) but Outlook needs the full SMTP form for (`alice@example.test`).
 - An external address being rejected because the user's tenant blocks external invites.
 
 **Recover**: ask the user for the full SMTP address; retry.

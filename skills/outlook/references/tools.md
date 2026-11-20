@@ -2,7 +2,7 @@
 
 All mailbox tools accept `account` (exact SMTP address) and `store_id`. Supply either selector in a multi-account profile. Use `outlook_whoami` for authorized selectors and keep each StoreID with its EntryID.
 
-Every `outlook_*` tool, with parameters, defaults, return shape, and notes on chaining. Skim the table of contents, then jump to the tools you need.
+Use the active connection's `tools/list` for available names and input schemas. The entries below describe operations that may be enabled. Calendar return examples with identifiers apply only when disclosure permits them.
 
 ## Contents
 
@@ -27,7 +27,7 @@ List mail items from a folder, newest first. Read-only.
 
 | Param            | Type      | Default     | Notes |
 | ---------------- | --------- | ----------- | ----- |
-| `folder`         | string    | `"inbox"`   | Well-known name or path. See SKILL.md → Folder references. |
+| `folder`         | string    | `"inbox"`   | Well-known name or path. Use a name or path within the selected store. |
 | `limit`          | int 1–100 | `25`        | Max items to return. |
 | `offset`         | int ≥0    | `0`         | Skip this many before returning. Use with the returned `next_offset` to paginate. |
 | `unread_only`    | bool      | `false`     | If true, only unread mails. |
@@ -52,7 +52,7 @@ Search a single folder by subject/body, subject-only, sender, or raw DASL. Read-
 
 **Returns**: `{ query, scope, folder, count, items: [...] }`. Items have the same summary shape as `list_mails`.
 
-Multi-word queries match items containing **all** the words (not the exact phrase), so `"teams not working"` finds "MESP-1 teams is not working". `scope='from'` matches display name, raw address, **and** the real SMTP address (works for Exchange senders too).
+Multi-word queries match items containing **all** the words (not the exact phrase), so `"teams not working"` finds "Synthetic report: Teams is not working". `scope='from'` matches display name, raw address, **and** the real SMTP address (works for Exchange senders too).
 
 `scope='dasl'` is for power use — pass a complete `@SQL=...` filter and the server applies it raw. Only reach for this when subject_body/subject/from can't express what the user wants.
 
@@ -248,15 +248,15 @@ Create a calendar event or meeting invite. **Adding any attendee turns this into
 | `location`          | string         | `null`  | |
 | `body`              | string         | `null`  | |
 | `attendees`         | list[str]      | `null`  | Email addresses. Adding any value here makes this a meeting and sends invites. |
-| `is_online_meeting` | bool           | `false` | Reserved — current behavior is to mark the meeting; the actual Teams/Zoom link is added by Outlook clients. |
+| `is_online_meeting` | bool           | `false` | Reserved. This server does not create an online meeting link. |
 | `reminder_minutes`  | int 0–10080    | `15`    | Minutes before start. |
-| `recurrence`        | Recurrence obj | `null`  | See SKILL.md → Recurrence. |
+| `recurrence`        | Recurrence obj | `null`  | Use the recurrence schema advertised by this connection. |
 | `sensitivity`       | int 0–3        | omitted | Set the native Outlook level. Omit to use Outlook's default. |
 | `categories`        | list[str]      | omitted | Initial assignments. Supply exact category names from the selected store. |
 
-**Returns**: `{ status: "created", entry_id, subject, start, end }`.
+**Returns**: `{ status: "created", entry_id, store_id, subject, start, end }` for full disclosure.
 
-Protected appointment actions return status only. A `busy_only` create adds the four availability fields. This also applies to responses from update, delete, respond and set-category operations on protected appointments.
+Protected appointment actions return status only. A `busy_only` create adds the four availability fields. Other protected appointment writes return only status.
 
 Confirm attendee list, times, recurrence and any explicitly selected sensitivity with the user before calling.
 
@@ -340,7 +340,7 @@ Word search across saved contacts (name, email, company, job title) **and the or
 
 | Param               | Type    | Default | Notes |
 | ------------------- | ------- | ------- | ----- |
-| `query`             | string  | required | e.g. `"anas shaikh"` matches "Anas Ahmed Shaikh". |
+| `query`             | string  | required | e.g. `"alex reed"` matches "Alex Morgan Reed". |
 | `limit`             | int 1–100| `25`   | |
 | `include_directory` | bool    | `true`  | Also scan the Exchange Global Address List. A few seconds on large directories. |
 | `response_format`   | str     | `markdown` | |
@@ -454,7 +454,7 @@ There is **no tool to enable, disable, or schedule OOO**. Tell users to manage i
 
 ### `outlook_whoami`
 
-Returns the bound user, the account list, and the user's timezone: `{ current_user, accounts: [{display_name, smtp_address, user_name, account_type}, ...], local_time, timezone, utc_offset }`. Useful as a sanity check when the user has multiple mailboxes, and as the authority on what timezone all returned datetimes are in.
+Returns `requires_account_selection`, authorized `accounts` (including `smtp_address`, `store_id`, `read`, `write`), `current_user`, `local_time`, `timezone` and `utc_offset`. With multiple accounts, choose the intended authorized store explicitly.
 
 ---
 
