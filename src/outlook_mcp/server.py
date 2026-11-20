@@ -23,7 +23,9 @@ server attaches to Outlook at startup and can launch it; the new "modern" Outloo
 (olk.exe) is NOT supported.
 
 Only use tools advertised by this server; the local config may disable tools.
-Tool filtering does not enforce account authorization or write approval.
+Use outlook_whoami to discover authorized accounts and their StoreIDs. For multiple
+accounts specify account (exact SMTP address) or store_id on each mailbox call.
+Return the store_id alongside the entry_id on follow-up calls.
 
 Tool categories (all prefixed `outlook_`):
   - Mail: list, search, get, send, reply, forward, move, delete, mark, save_attachments

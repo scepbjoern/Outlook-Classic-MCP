@@ -111,6 +111,8 @@ def _render_collection(data: dict[str, Any]) -> str:
     lines: list[str] = []
 
     header_bits = [f"**{data.get('count', len(items))} result(s)**"]
+    if data.get("store_id"):
+        header_bits.append(f"StoreID: `{data['store_id']}`")
     if "folder" in data:
         header_bits.append(f"folder: `{data['folder']}`")
     if "query" in data:
@@ -193,6 +195,8 @@ def _render_detail(data: dict[str, Any]) -> str:
     lines: list[str] = []
     if "subject" in data and ("body" in data or "html_body" in data):
         lines.append(f"# {data.get('subject', '(no subject)')}")
+        if data.get("store_id"):
+            lines.append(f"**StoreID:** `{data['store_id']}`")
         if data.get("from"):
             lines.append(f"**From:** {data['from']} <{data.get('from_address', '')}>")
         if data.get("to"):

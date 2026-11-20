@@ -1,16 +1,12 @@
-"""Folder resolution + list/create.
-
-All public functions take ``(outlook, namespace, **kwargs)`` so they can
-run on the bridge thread directly. Internal helpers take ``namespace``
-since they don't need the application object.
-"""
+"""Folder and item lookup within an authorized delivery store."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from outlook_mcp.client.mailbox import Mailbox
 from outlook_mcp.constants import DEFAULT_FOLDER_MAP, OL_FOLDER_INBOX
-from outlook_mcp.errors import OutlookError, is_disconnect_error
+from outlook_mcp.errors import OutlookError, is_missing_item_error
 
 
 def _safe_get(item: Any, attr: str, default: Any = None) -> Any:
@@ -20,85 +16,79 @@ def _safe_get(item: Any, attr: str, default: Any = None) -> Any:
         return default
 
 
-def resolve_folder(namespace: Any, folder: str | None) -> Any:
+def resolve_folder(mailbox: Mailbox, folder: str | None) -> Any:
     """Resolve a folder spec to a MAPIFolder COM object.
 
     Accepted forms:
       * None / "" -> default Inbox
       * one of the well-known names (``inbox``, ``sent``, ...)
       * a slash-delimited path (``Inbox/Projects/Quinn``), optionally
-        prefixed with a store display name.
+        prefixed with the selected store's root folder name.
     """
     if not folder:
-        return namespace.GetDefaultFolder(OL_FOLDER_INBOX)
+        return mailbox.default_folder(OL_FOLDER_INBOX)
 
     key = folder.strip().lower()
     if key in DEFAULT_FOLDER_MAP:
-        return namespace.GetDefaultFolder(DEFAULT_FOLDER_MAP[key])
+        return mailbox.default_folder(DEFAULT_FOLDER_MAP[key])
 
     segments = [s for s in folder.replace("\\", "/").split("/") if s]
     if not segments:
         raise OutlookError(f"Invalid folder spec: '{folder}'")
 
-    first = segments[0].lower()
-    root = None
-    for store in namespace.Stores:
-        if store.DisplayName.lower() == first:
-            root = store.GetRootFolder()
-            segments = segments[1:]
-            break
-    if root is None:
-        root = namespace.GetDefaultFolder(OL_FOLDER_INBOX).Parent
-
-    current = root
+    current = mailbox.root_folder()
+    if segments[0].casefold() in (current.Name.casefold(), mailbox.store.DisplayName.casefold()):
+        segments = segments[1:]
     for seg in segments:
-        seg_lower = seg.lower()
-        match = None
-        for sub in current.Folders:
-            if sub.Name.lower() == seg_lower:
-                match = sub
-                break
-        if match is None:
+        matches = [sub for sub in current.Folders if sub.Name.casefold() == seg.casefold()]
+        if not matches:
             raise OutlookError(
                 f"Folder '{seg}' not found under '{current.Name}'. "
                 "Use outlook_list_folders to see available paths."
             )
-        current = match
+        if len(matches) != 1:
+            raise OutlookError(f"Folder '{seg}' is ambiguous in the selected store.")
+        current = matches[0]
+        mailbox.require_store(current)
     return current
 
 
-def get_item_by_id(namespace: Any, entry_id: str, store_id: str | None = None) -> Any:
-    # Import on the COM thread. Registration and config validation need no COM.
-    import pythoncom
-
+def get_item_by_id(
+    namespace: Any, mailbox: Mailbox, entry_id: str, *classes: int,
+) -> Any:
     try:
-        if store_id:
-            return namespace.GetItemFromID(entry_id, store_id)
-        return namespace.GetItemFromID(entry_id)
-    except pythoncom.com_error as exc:
-        if is_disconnect_error(exc):
-            # Outlook itself is gone, not the item — let the bridge see
-            # the raw COM error so it reconnects and retries.
+        item = namespace.GetItemFromID(entry_id, mailbox.store_id)
+    except Exception as exc:
+        if not is_missing_item_error(exc):
             raise
         raise OutlookError(
-            f"Item with id '{entry_id}' not found. The id may be stale or "
-            "the item may have been deleted."
+            "Item not found in the selected store. The EntryID may be stale or belong to a different store."
         ) from exc
+    if item is None:
+        raise OutlookError("Item not found in the selected store.")
+    mailbox.require_store(item.Parent)
+    if classes and item.Class not in classes:
+        raise OutlookError("The EntryID refers to a different type of Outlook item.")
+    return item
 
 
-def list_folders(outlook: Any, namespace: Any, *, root: str | None = None, max_depth: int = 4) -> list[dict[str, Any]]:
+def list_folders(
+    namespace: Any, mailbox: Mailbox, *, root: str | None = None, max_depth: int = 4,
+) -> list[dict[str, Any]]:
     if root:
-        start = resolve_folder(namespace, root)
+        start = resolve_folder(mailbox, root)
     else:
-        start = namespace.GetDefaultFolder(OL_FOLDER_INBOX).Parent
+        start = mailbox.root_folder()
 
     out: list[dict[str, Any]] = []
 
     def walk(folder: Any, path: str, depth: int) -> None:
+        mailbox.require_store(folder)
         items_obj = _safe_get(folder, "Items")
         out.append(
             {
                 "name": folder.Name,
+                "store_id": mailbox.store_id,
                 "path": path,
                 "item_count": items_obj.Count if items_obj else 0,
                 "unread_count": _safe_get(folder, "UnReadItemCount", 0),
@@ -114,11 +104,12 @@ def list_folders(outlook: Any, namespace: Any, *, root: str | None = None, max_d
     return out
 
 
-def create_folder(outlook: Any, namespace: Any, *, parent: str | None, name: str) -> dict[str, Any]:
-    parent_folder = resolve_folder(namespace, parent)
+def create_folder(namespace: Any, mailbox: Mailbox, *, parent: str | None, name: str) -> dict[str, Any]:
+    parent_folder = resolve_folder(mailbox, parent)
     new_folder = parent_folder.Folders.Add(name)
     return {
         "name": new_folder.Name,
         "path": f"{parent_folder.Name}/{new_folder.Name}",
         "entry_id": new_folder.EntryID,
+        "store_id": mailbox.store_id,
     }

@@ -9,6 +9,8 @@ from pydantic import Field
 
 from outlook_mcp.client import tasks as tasks_client
 from outlook_mcp.ui import ui_meta, ui_result
+from outlook_mcp.client.mailbox import Access
+from outlook_mcp.schemas import AccountSelector, StoreSelector
 from outlook_mcp.utils.formatting import format_response
 from outlook_mcp.utils.safety import safe_call
 
@@ -31,10 +33,16 @@ def register(mcp, bridge) -> None:
         limit: Annotated[int, Field(ge=1, le=200)] = 50,
         include_completed: Annotated[bool, Field()] = False,
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> CallToolResult:
         """List tasks (to-dos). By default only incomplete tasks are returned."""
         data = await bridge.call(
-            tasks_client.list_tasks, limit=limit, include_completed=include_completed
+            tasks_client.list_tasks, Access.READ,
+            account=account,
+            store_id=store_id,
+            limit=limit,
+            include_completed=include_completed,
         )
         return ui_result(format_response(data, response_format), data)
 
@@ -55,10 +63,14 @@ def register(mcp, bridge) -> None:
         body: Annotated[Optional[str], Field()] = None,
         importance: Annotated[str, Field(description="low/normal/high.")] = "normal",
         reminder: Annotated[Optional[str], Field(description="ISO-8601 reminder time.")] = None,
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Create a new task in the default Tasks folder."""
         data = await bridge.call(
-            tasks_client.create_task,
+            tasks_client.create_task, Access.WRITE,
+            account=account,
+            store_id=store_id,
             subject=subject,
             due_date=due_date,
             body=body,
@@ -80,7 +92,14 @@ def register(mcp, bridge) -> None:
     @safe_call
     async def outlook_complete_task(
         entry_id: Annotated[str, Field(description="EntryID of the task.")],
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Mark a task as 100% complete."""
-        data = await bridge.call(tasks_client.complete_task, entry_id=entry_id)
+        data = await bridge.call(
+            tasks_client.complete_task, Access.WRITE,
+            account=account,
+            store_id=store_id,
+            entry_id=entry_id,
+        )
         return format_response(data, "json")

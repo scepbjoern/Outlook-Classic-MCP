@@ -78,6 +78,7 @@ MCPApp.onToolResult(r => {
 });
 
 function load(d) {
+  if (d.store_id) toolArgs = { ...toolArgs, store_id: d.store_id };
   tasks = d.items;
   $("error").innerHTML = "";
   const open = tasks.filter(t => !t.complete).length;
@@ -126,10 +127,10 @@ $("list").addEventListener("click", async ev => {
   if (!t || t.complete) return;
   row.classList.add("busy");
   try {
-    await MCPApp.callTool("outlook_complete_task", { entry_id: t.entry_id });
+    await MCPApp.callTool("outlook_complete_task", { store_id: t.store_id, entry_id: t.entry_id });
     t.complete = true;
     MCPApp.updateModelContext("User completed the task “" + (t.subject || "(untitled)") + "” via the tasks view.");
-    if (!includeCompleted) tasks = tasks.filter(x => x.entry_id !== t.entry_id);
+    if (!includeCompleted) tasks = tasks.filter(x => x !== t);
     load({ items: tasks });
   } catch (e) {
     row.classList.remove("busy");
@@ -142,7 +143,7 @@ async function addTask() {
   if (!subj) return;
   $("addBtn").disabled = true;
   try {
-    const args = { subject: subj };
+    const args = { subject: subj, account: toolArgs.account, store_id: toolArgs.store_id };
     if ($("newDue").value) args.due_date = $("newDue").value;
     await MCPApp.callTool("outlook_create_task", args);
     $("newSubj").value = ""; $("newDue").value = "";

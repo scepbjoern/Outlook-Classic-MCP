@@ -1,4 +1,7 @@
-"""Tool registration: each submodule exposes register(mcp, bridge)."""
+"""Register allowed tools and authorize their calls on the COM thread."""
+
+from outlook_mcp.client import account as account_client
+from outlook_mcp.client.mailbox import Access, call_in_mailbox
 
 from outlook_mcp.config import TOOL_GROUPS, ToolConfigError, ToolPolicy
 
@@ -27,6 +30,22 @@ _GROUP_MODULES = {
 }
 
 
+class _MailboxBridge:
+    def __init__(self, bridge, policy: ToolPolicy) -> None:
+        self._bridge = bridge
+        self._accounts = policy.accounts
+
+    async def call(self, operation, access: Access, *, account, store_id, **kwargs):
+        return await self._bridge.call(
+            call_in_mailbox, retry_on_disconnect=Access.WRITE not in access,
+            operation=operation, policy=self._accounts,
+            access=access, account=account, store_id=store_id, arguments=kwargs,
+        )
+
+    async def identity(self):
+        return await self._bridge.call(account_client.whoami, self._accounts)
+
+
 class _PolicyToolRegistration:
     """Expose only the decorator used by the tool modules.
 
@@ -53,5 +72,6 @@ class _PolicyToolRegistration:
 def register_all(mcp, bridge, policy: ToolPolicy | None = None) -> None:
     """Register the current inventory under a validated tool policy."""
     effective_policy = policy if policy is not None else ToolPolicy()
+    mailbox_bridge = _MailboxBridge(bridge, effective_policy)
     for group, mod in _GROUP_MODULES.items():
-        mod.register(_PolicyToolRegistration(mcp, group, effective_policy), bridge)
+        mod.register(_PolicyToolRegistration(mcp, group, effective_policy), mailbox_bridge)

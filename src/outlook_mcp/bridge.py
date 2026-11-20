@@ -182,14 +182,14 @@ class OutlookBridge:
         err.__cause__ = last_exc
         return err
 
-    def _execute(self, func: Callable[..., Any], args: tuple, kwargs: dict, holder: dict) -> None:
+    def _execute(
+        self, func: Callable[..., Any], args: tuple, kwargs: dict, holder: dict,
+        retry_on_disconnect: bool = True,
+    ) -> None:
         """Run one queued call, transparently reconnecting if Outlook died.
 
-        If the call fails with a disconnect HRESULT (user closed Outlook,
-        it crashed, it was updated...), re-attach — relaunching
-        OUTLOOK.EXE if needed — and retry the call once. Disconnect means
-        the RPC channel broke because the process went away, so the
-        original call did not complete; a single retry is safe.
+        Read calls can run again against the reattached profile. A disconnect
+        after a write leaves its outcome uncertain, so writes opt out of replay.
         """
         try:
             holder["value"] = func(self._outlook, self._namespace, *args, **kwargs)
@@ -209,6 +209,13 @@ class OutlookBridge:
             attach_err = self._attach()
         finally:
             self._reconnecting.clear()
+        if not retry_on_disconnect:
+            holder["error"] = RuntimeError(
+                "Outlook disconnected during the operation. Its outcome is unknown. "
+                "Check the selected store before repeating it."
+            )
+            holder["error"].__cause__ = attach_err
+            return
         if attach_err is not None:
             holder["error"] = RuntimeError(
                 "Outlook was closed and could not be relaunched: "
@@ -257,23 +264,23 @@ class OutlookBridge:
 
             while not self._shutdown.is_set():
                 try:
-                    func, args, kwargs, done, holder = self._queue.get(timeout=0.5)
+                    func, args, kwargs, done, holder, retry_on_disconnect = self._queue.get(timeout=0.5)
                 except queue.Empty:
                     continue
                 try:
-                    self._execute(func, args, kwargs, holder)
+                    self._execute(func, args, kwargs, holder, retry_on_disconnect)
                 finally:
                     done.set()
         finally:
             pythoncom.CoUninitialize()
 
-    async def call(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    async def call(self, func: Callable[..., Any], *args: Any, retry_on_disconnect: bool = True, **kwargs: Any) -> Any:
         """Run ``func(outlook, namespace, *args, **kwargs)`` on the COM thread."""
         if self._thread is None or not self._thread.is_alive():
             raise RuntimeError("Bridge is not running. Did you forget to call start()?")
         done = threading.Event()
         holder: dict[str, Any] = {}
-        self._queue.put((func, args, kwargs, done, holder))
+        self._queue.put((func, args, kwargs, done, holder, retry_on_disconnect))
 
         loop = asyncio.get_running_loop()
         signaled = await loop.run_in_executor(

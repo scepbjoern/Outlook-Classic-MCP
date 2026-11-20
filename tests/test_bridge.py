@@ -76,6 +76,18 @@ def test_non_disconnect_errors_are_not_retried(bridge):
     assert len(attempts) == 1
 
 
+def test_write_is_not_replayed_after_disconnect(bridge):
+    attempts = []
+
+    def interrupted_write(outlook, namespace):
+        attempts.append(namespace)
+        raise _rpc_unavailable()
+
+    with pytest.raises(RuntimeError, match="outcome is unknown"):
+        asyncio.run(bridge.call(interrupted_write, retry_on_disconnect=False))
+    assert len(attempts) == 1
+
+
 def test_reconnects_when_stale_proxy_raises_bare_attribute_error(bridge):
     # Outlook restarted under us: pywin32's dynamic __getattr__ swallows the
     # RPC error and raises a bare AttributeError. The raw IDispatch probe

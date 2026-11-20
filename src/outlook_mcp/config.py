@@ -1,4 +1,4 @@
-"""Local tool-advertisement policy for the Outlook MCP server.
+"""Local tool and mailbox policy for the Outlook MCP server.
 
 This module intentionally has no Outlook, MCP or third-party dependencies so a
 broken configuration can reject startup before Outlook COM is initialized.
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,6 +46,28 @@ class ToolConfigError(ValueError):
     """Tool policy is invalid or could not be read; refuse to start."""
 
 
+def normalize_identifier(value: str) -> str:
+    """Fold ASCII case only. Distinct international mailbox names stay distinct."""
+    return value.translate(_ASCII_LOWER)
+
+
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+_SMTP_ATOM = r"[\w!#$%&'*+/=?^`{|}~-]+"
+_DOMAIN_LABEL = r"[^\W_](?:[^\W_]|-(?=[^\W_]|-))*"
+_SMTP_ADDRESS = re.compile(rf"{_SMTP_ATOM}(?:\.{_SMTP_ATOM})*@{_DOMAIN_LABEL}(?:\.{_DOMAIN_LABEL})*")
+
+
+def is_smtp_address(value: str) -> bool:
+    """Accept a bare dot-atom SMTP address instead of Outlook display-name syntax."""
+    return _SMTP_ADDRESS.fullmatch(value) is not None
+
+
+@dataclass(frozen=True)
+class AccountPolicy:
+    read: frozenset[str] = field(default_factory=frozenset)
+    write: frozenset[str] = field(default_factory=frozenset)
+
+
 @dataclass(frozen=True)
 class ToolPolicy:
     """Allowlist constraints intersect; deny rules always take precedence.
@@ -57,6 +80,7 @@ class ToolPolicy:
     disabled_groups: frozenset[str] = field(default_factory=frozenset)
     enabled_tools: frozenset[str] | None = None
     disabled_tools: frozenset[str] = field(default_factory=frozenset)
+    accounts: AccountPolicy | None = None
 
     def allows(self, group: str, name: str) -> bool:
         if group not in TOOL_GROUPS or name not in TOOL_GROUPS[group]:
@@ -110,6 +134,18 @@ def _names(obj: dict[str, Any], key: str, valid: frozenset[str] | set[str]) -> f
     return frozenset(values)
 
 
+def _smtp_addresses(obj: dict[str, Any], key: str) -> frozenset[str]:
+    values = obj.get(key, [])
+    if not isinstance(values, list) or any(
+        not isinstance(value, str) or not is_smtp_address(value) for value in values
+    ):
+        raise ToolConfigError(f"accounts.{key} must be an array of exact SMTP addresses")
+    normalized = frozenset(normalize_identifier(value) for value in values)
+    if len(normalized) != len(values):
+        raise ToolConfigError(f"accounts.{key} contains duplicate SMTP addresses")
+    return normalized
+
+
 def parse_tool_policy(raw: str) -> ToolPolicy:
     """Parse and validate the complete configuration, rejecting unknown fields."""
     try:
@@ -118,10 +154,16 @@ def parse_tool_policy(raw: str) -> ToolPolicy:
         raise
     except (ValueError, RecursionError) as exc:
         raise ToolConfigError(f"Invalid JSON configuration: {exc}") from exc
-    root = _object(data, "config", {"version", "tools"})
+    root = _object(data, "config", {"version", "tools", "accounts"})
     version = root.get("version", 1)
-    if type(version) is not int or version != 1:
-        raise ToolConfigError("config.version must be 1")
+    if type(version) is not int or version not in (1, 2):
+        raise ToolConfigError("config.version must be 1 or 2")
+    account_policy = None
+    if version == 2:
+        accounts = _object(root.get("accounts"), "accounts", {"read", "write"})
+        account_policy = AccountPolicy(_smtp_addresses(accounts, "read"), _smtp_addresses(accounts, "write"))
+    elif "accounts" in root:
+        raise ToolConfigError("accounts requires config.version 2")
     tools = _object(
         root.get("tools", {}),
         "tools",
@@ -137,6 +179,7 @@ def parse_tool_policy(raw: str) -> ToolPolicy:
         disabled_groups=disabled_groups or frozenset(),
         enabled_tools=enabled_tools,
         disabled_tools=disabled_tools or frozenset(),
+        accounts=account_policy,
     )
 
 

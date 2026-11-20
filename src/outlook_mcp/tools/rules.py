@@ -7,6 +7,8 @@ from typing import Annotated
 from pydantic import Field
 
 from outlook_mcp.client import rules as rules_client
+from outlook_mcp.client.mailbox import Access
+from outlook_mcp.schemas import AccountSelector, StoreSelector
 from outlook_mcp.utils.formatting import format_response
 from outlook_mcp.utils.safety import safe_call
 
@@ -25,9 +27,15 @@ def register(mcp, bridge) -> None:
     @safe_call
     async def outlook_list_rules(
         response_format: Annotated[str, Field(description="'markdown' or 'json'.")] = "markdown",
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """List all mail rules with their enabled status."""
-        data = await bridge.call(rules_client.list_rules)
+        data = await bridge.call(
+            rules_client.list_rules, Access.READ,
+            account=account,
+            store_id=store_id,
+        )
         return format_response(data, response_format)
 
     @mcp.tool(
@@ -47,9 +55,15 @@ def register(mcp, bridge) -> None:
             Field(min_length=1, description="Exact rule name (use outlook_list_rules)."),
         ],
         enabled: Annotated[bool, Field(description="True to enable, False to disable.")],
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
     ) -> str:
         """Enable or disable a mail rule by name. Modifies live mail rules."""
         data = await bridge.call(
-            rules_client.toggle_rule, rule_name=rule_name, enabled=enabled
+            rules_client.toggle_rule, Access.READ_WRITE,
+            account=account,
+            store_id=store_id,
+            rule_name=rule_name,
+            enabled=enabled,
         )
         return format_response(data, "json")

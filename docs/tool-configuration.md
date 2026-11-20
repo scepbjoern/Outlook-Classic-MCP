@@ -88,6 +88,60 @@ authoritative tool inventory is `src/outlook_mcp/config.py`. If you add a tool
 to the source code, add it to that inventory and update the registration tests;
 an unlisted tool decorator otherwise rejects registration.
 
+## Account selection and migration
+
+Existing tool-only files use version 1, including files with no version field.
+To add account permissions, set `version` to `2`, keep your `tools` settings
+and add an `accounts` object. Both versions reject unknown properties. An
+older server rejects version 2. On downgrade, restore the original tool-only
+file and review the older server's mailbox access before starting it.
+
+```json
+{
+  "version": 2,
+  "tools": {"disabled_tools": ["outlook_delete_mail"]},
+  "accounts": {
+    "read": ["alpha@example.test", "beta@example.test"],
+    "write": ["beta@example.test"]
+  }
+}
+```
+
+| Policy | One account loaded | Several accounts loaded |
+| --- | --- | --- |
+| Missing default file or version 1 | The sole account has read and write access. Selection is optional. | Mailbox operations require a version 2 policy. |
+| Version 2 | The sole account is selected automatically. Its configured permissions apply. | Each call requires an explicit selector and the appropriate permissions. |
+
+Version 2 requires `accounts`. Omitted or empty `read` and `write` lists grant
+zero permissions for that access type. Each entry is an exact SMTP address.
+The server validates the entire JSON file before starting COM. It checks
+account membership, uniqueness and delivery-store identity against Outlook
+during each call. An address absent from the loaded profile grants no access.
+
+Call `outlook_whoami` for accessible accounts, their permissions and StoreIDs.
+Pass `account` (SMTP address) or `store_id` (delivery StoreID). When supplied
+together, both must identify the same unique account. Duplicate addresses
+and shared delivery stores are ambiguous. Multiple accounts always require
+a selector, even if only one is authorized. Use the `store_id` returned with an
+`entry_id` for later operations. A move can produce a new EntryID.
+
+Reading mailbox data, including saving attachments to disk, requires read
+access. Creating mail or drafts, events, folders and tasks, updating event
+fields and completing tasks require write access. Mail replies, forwarding,
+moving, deletion and marking, meeting responses, event deletion, setting
+categories and toggling rules require both rights because these actions also
+return or transmit information about existing items.
+
+## Outlook provider behaviour
+
+- Each account maps to its delivery store in the loaded MAPI profile. Separate profiles require separate Outlook sessions. Archive PSTs and delegate-only stores without an account mapping cannot be selected.
+- Calendar events, mail drafts and tasks are created in the selected store's corresponding folder. Sending binds the Outlook account. Use exact SMTP recipient addresses in multi-account profiles. Item lookup supplies the StoreID and verifies the returned parent folder before accessing the item.
+- Folder paths and move destinations stay within the selected store. Prefixing a path with a store display name cannot select a different account.
+- Saved contacts come from the selected store. Exchange directory search compares the provider section UID of the store with that of each Global Address List. An unavailable or ambiguous match leaves `searched_directory` false. Outlook's Ctrl+K name resolver is available only in a single-account, single-store profile. [Microsoft's store-specific address list lookup](https://learn.microsoft.com/en-us/office/vba/outlook/concepts/address-book/identify-the-global-address-list-or-a-set-of-address-lists-with-a-store)
+- Category listing uses the selected Exchange mailbox. Other providers require a single-account, single-store profile because secondary providers can return the primary category list. [Microsoft's Store.Categories reference](https://learn.microsoft.com/en-us/office/vba/api/outlook.store.categories)
+- Rules use the selected store's rule collection. Enabling a rule in a multi-account or multi-store profile requires inspectable, mailbox-local actions. Move and copy destinations must belong to the same store. OOO reads the selected store's provider property and reports `unknown` if unavailable.
+- If Outlook disconnects during a write, inspect the selected store before retrying. A provider may have completed part of the operation, such as saving a meeting before sending its invitation.
+
 ## Security boundary
 
 Disallowed tools are filtered **at registration time** and are absent from MCP
@@ -95,13 +149,7 @@ Disallowed tools are filtered **at registration time** and are absent from MCP
 MCP App resources are static and may still display controls for disabled tools;
 those controls cannot invoke unregistered tools.
 
-**Hiding tools is not account authorization or user approval.** Every enabled
-tool retains the Outlook COM permissions of the signed-in Windows user,
-including access to multiple stores where the tool implementation allows it.
-These rules do not enforce account allowlists, inspect recipients, require
-write approval, or redact information returned by allowed tools. Those
-protections are separate work in [issue #2](https://github.com/scepbjoern/Outlook-Classic-MCP/issues/2)
-and [issue #3](https://github.com/scepbjoern/Outlook-Classic-MCP/issues/3).
+The server checks account rights on every registered mailbox operation. Per-action write confirmation is tracked in [issue #3](https://github.com/scepbjoern/Outlook-Classic-MCP/issues/3).
 Allowed tool outputs may also be transmitted to the MCP client or its LLM
 provider; running the COM bridge locally does not prevent that.
 

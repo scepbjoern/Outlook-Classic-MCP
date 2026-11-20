@@ -46,6 +46,11 @@ def _com_hresults(exc: BaseException) -> set[int]:
     return found
 
 
+def is_missing_item_error(exc: BaseException) -> bool:
+    """MAPI_E_INVALID_ENTRYID or MAPI_E_NOT_FOUND from a scoped item lookup."""
+    return bool(_com_hresults(exc) & {0x80040107, 0x8004010F})
+
+
 def is_disconnect_error(exc: BaseException | None) -> bool:
     """True if ``exc`` (or anything in its cause chain) means Outlook died.
 

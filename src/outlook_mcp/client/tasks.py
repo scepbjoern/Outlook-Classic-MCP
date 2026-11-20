@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from outlook_mcp.client.mailbox import Mailbox
 from outlook_mcp.client.folders import _safe_get, get_item_by_id
 from outlook_mcp.constants import (
     IMPORTANCE_MAP,
@@ -29,13 +30,13 @@ def _task_summary(t: Any) -> dict[str, Any]:
 
 
 def list_tasks(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     limit: int = 50,
     include_completed: bool = False,
 ) -> dict[str, Any]:
-    folder = namespace.GetDefaultFolder(OL_FOLDER_TASKS)
+    folder = mailbox.default_folder(OL_FOLDER_TASKS)
     items = folder.Items
     items.Sort("[DueDate]")
     results: list[dict[str, Any]] = []
@@ -44,15 +45,16 @@ def list_tasks(
             continue
         if not include_completed and _safe_get(t, "Complete", False):
             continue
-        results.append(_task_summary(t))
+        mailbox.require_store(t.Parent)
+        results.append({**_task_summary(t), "store_id": mailbox.store_id})
         if len(results) >= limit:
             break
-    return {"count": len(results), "items": results}
+    return {"store_id": mailbox.store_id, "count": len(results), "items": results}
 
 
 def create_task(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     subject: str,
     due_date: str | None = None,
@@ -60,7 +62,8 @@ def create_task(
     importance: str = "normal",
     reminder: str | None = None,
 ) -> dict[str, Any]:
-    task = outlook.CreateItem(OL_TASK_ITEM)
+    task = mailbox.default_folder(OL_FOLDER_TASKS).Items.Add(OL_TASK_ITEM)
+    mailbox.require_store(task.Parent)
     task.Subject = subject
     if due_date:
         task.DueDate = to_com(from_iso(due_date))
@@ -71,11 +74,11 @@ def create_task(
         task.ReminderSet = True
         task.ReminderTime = to_com(from_iso(reminder))
     task.Save()
-    return {"status": "created", "entry_id": task.EntryID, "subject": task.Subject}
+    return {"store_id": mailbox.store_id, "status": "created", "entry_id": task.EntryID, "subject": task.Subject}
 
 
-def complete_task(outlook: Any, namespace: Any, *, entry_id: str) -> dict[str, Any]:
-    task = get_item_by_id(namespace, entry_id)
+def complete_task(namespace: Any, mailbox: Mailbox, *, entry_id: str) -> dict[str, Any]:
+    task = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_TASK)
     task.MarkComplete()
     task.Save()
-    return {"status": "completed", "entry_id": entry_id}
+    return {"store_id": mailbox.store_id, "status": "completed", "entry_id": entry_id}

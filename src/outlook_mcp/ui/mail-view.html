@@ -39,6 +39,7 @@ MCPApp.onToolResult(r => {
   }
   const d = MCPApp.data(r);
   if (!d || !d.entry_id) return;
+  confirmDelete = false;
   mail = d;
   render();
   showStatus($("status"), "Ready");
@@ -80,18 +81,22 @@ function render() {
 }
 
 async function act(kind) {
+  const selected = mail;
   try {
     if (kind === "read") {
-      const r = await MCPApp.callTool("outlook_mark_mail", { entry_id: mail.entry_id, read: mail.unread });
+      const r = await MCPApp.callTool("outlook_mark_mail", { store_id: mail.store_id, entry_id: mail.entry_id, read: mail.unread });
+      if (mail !== selected) return;
       const d = MCPApp.data(r);
       mail.unread = d && typeof d.unread === "boolean" ? d.unread : !mail.unread;
     } else if (kind === "flag") {
-      const r = await MCPApp.callTool("outlook_mark_mail", { entry_id: mail.entry_id, flagged: !mail.flagged });
+      const r = await MCPApp.callTool("outlook_mark_mail", { store_id: mail.store_id, entry_id: mail.entry_id, flagged: !mail.flagged });
+      if (mail !== selected) return;
       const d = MCPApp.data(r);
       mail.flagged = d && typeof d.flagged === "boolean" ? d.flagged : !mail.flagged;
     } else if (kind === "del") {
       if (!confirmDelete) { confirmDelete = true; render(); return; }
-      await MCPApp.callTool("outlook_delete_mail", { entry_id: mail.entry_id });
+      await MCPApp.callTool("outlook_delete_mail", { store_id: mail.store_id, entry_id: mail.entry_id });
+      if (mail !== selected) return;
       MCPApp.updateModelContext("User deleted the mail “" + (mail.subject || "(no subject)") + "” via the reader view.");
       $("mail").innerHTML = '<div class="empty"><div class="big">🗑️</div>Mail deleted.</div>';
       return;

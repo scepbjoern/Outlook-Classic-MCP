@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, Field
+
+
+AccountSelector = Annotated[str | None, Field(
+    description="Exact Outlook SMTP account. In a multi-account profile, provide account or store_id.",
+)]
+StoreSelector = Annotated[str | None, Field(
+    description="Outlook StoreID from outlook_whoami or an item result. Must agree with account if both are supplied.",
+)]
 
 
 class ResponseFormat(str, Enum):

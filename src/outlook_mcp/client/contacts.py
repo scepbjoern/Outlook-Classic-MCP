@@ -3,7 +3,7 @@
 Corporate accounts commonly have an *empty* default Contacts folder —
 real entries live in sibling contact folders (Recipient Cache, etc.)
 and in the directory (Exchange Global Address List). So list/search
-cover every contact folder in every store, and search can also scan
+cover contact folders in the selected store, and search can also scan
 the GAL.
 """
 
@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from typing import Any, Iterator
 
+from outlook_mcp.client.mailbox import Mailbox
 from outlook_mcp.client.folders import _safe_get, get_item_by_id
+from outlook_mcp.errors import is_disconnect_error
 from outlook_mcp.constants import OL_CLASS_CONTACT, OL_CONTACT_ITEM
 
 
@@ -36,14 +38,15 @@ def _contact_full(c: Any) -> dict[str, Any]:
     }
 
 
-def _contact_folders(namespace: Any) -> Iterator[tuple[Any, str]]:
-    """Yield ``(folder, path)`` for every contact folder in every store.
+def _contact_folders(mailbox: Mailbox) -> Iterator[tuple[Any, str]]:
+    """Yield ``(folder, path)`` for contact folders in the selected store.
 
     ``DefaultItemType`` uses the same OlItemType enum as CreateItem, so
     contact folders are the ones reporting ``OL_CONTACT_ITEM`` (2).
     """
 
     def walk(folder: Any, path: str, depth: int) -> Iterator[tuple[Any, str]]:
+        mailbox.require_store(folder)
         if _safe_get(folder, "DefaultItemType") == OL_CONTACT_ITEM:
             yield folder, path
         if depth >= 3:
@@ -55,52 +58,73 @@ def _contact_folders(namespace: Any) -> Iterator[tuple[Any, str]]:
         for sub in subs:
             yield from walk(sub, f"{path}/{sub.Name}", depth + 1)
 
-    for store in namespace.Stores:
-        try:
-            root = store.GetRootFolder()
-        except Exception:
-            continue
-        yield from walk(root, str(store.DisplayName), 0)
+    yield from walk(mailbox.root_folder(), mailbox.store.DisplayName, 0)
 
 
 def _matches_all(haystack: str, words: list[str]) -> bool:
     return all(w in haystack for w in words)
 
 
-def list_contacts(outlook: Any, namespace: Any, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+def list_contacts(namespace: Any, mailbox: Mailbox, *, limit: int = 50, offset: int = 0) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     skipped = 0
-    for folder, path in _contact_folders(namespace):
+    for folder, path in _contact_folders(mailbox):
         items = folder.Items
         try:
             items.Sort("[FullName]")
         except Exception:
             pass
         for c in items:
+            mailbox.require_store(c.Parent)
             if _safe_get(c, "Class") != OL_CLASS_CONTACT:
                 continue
             if skipped < offset:
                 skipped += 1
                 continue
-            row = _contact_summary(c)
+            row = {**_contact_summary(c), "store_id": mailbox.store_id}
             row["folder"] = path
             results.append(row)
             if len(results) >= limit:
                 return {
                     "count": len(results),
+                    "store_id": mailbox.store_id,
                     "offset": offset,
                     "items": results,
                     "has_more": True,
                 }
     return {
         "count": len(results),
+        "store_id": mailbox.store_id,
         "offset": offset,
         "items": results,
         "has_more": False,
     }
 
 
-def _search_directory(namespace: Any, words: list[str], limit: int) -> list[dict[str, Any]]:
+def _directory_for_store(namespace: Any, mailbox: Mailbox) -> Any:
+    """Match Exchange's provider section UID before reading directory entries."""
+    def section_uid(obj):
+        accessor = obj.PropertyAccessor
+        prop = "http://schemas.microsoft.com/mapi/proptag/0x3D150102"
+        return accessor.BinaryToString(accessor.GetProperty(prop))
+
+    try:
+        if mailbox.single_account and namespace.Stores.Count == 1:
+            mailbox.require_store(namespace.Stores.Item(1))
+            return namespace.GetGlobalAddressList()
+        uid = section_uid(mailbox.store)
+        if not uid:
+            return None
+        matches = [address_list for address_list in namespace.AddressLists
+                   if address_list.AddressListType == 0 and section_uid(address_list) == uid]
+    except Exception as exc:
+        if is_disconnect_error(exc):
+            raise
+        return None
+    return matches[0] if len(matches) == 1 else None
+
+
+def _search_directory(directory: Any, words: list[str], limit: int) -> list[dict[str, Any]]:
     """Scan the Global Address List for entries matching all words.
 
     Matching is on the display name; details (SMTP, title, company) are
@@ -108,11 +132,9 @@ def _search_directory(namespace: Any, words: list[str], limit: int) -> list[dict
     few seconds — acceptable for an explicit search call.
     """
     out: list[dict[str, Any]] = []
-    try:
-        entries = namespace.GetGlobalAddressList().AddressEntries
-    except Exception:
-        return out  # no Exchange directory on this profile
-    for entry in entries:
+    if directory is None:
+        return out
+    for entry in directory.AddressEntries:
         name = str(_safe_get(entry, "Name", "") or "")
         if not _matches_all(name.lower(), words):
             continue
@@ -140,8 +162,8 @@ def _search_directory(namespace: Any, words: list[str], limit: int) -> list[dict
 
 
 def search_contacts(
-    outlook: Any,
     namespace: Any,
+    mailbox: Mailbox,
     *,
     query: str,
     limit: int = 25,
@@ -151,10 +173,11 @@ def search_contacts(
     results: list[dict[str, Any]] = []
     seen_emails: set[str] = set()
 
-    for folder, path in _contact_folders(namespace):
+    for folder, path in _contact_folders(mailbox):
         if len(results) >= limit:
             break
         for c in folder.Items:
+            mailbox.require_store(c.Parent)
             if _safe_get(c, "Class") != OL_CLASS_CONTACT:
                 continue
             haystack = " ".join(
@@ -162,7 +185,7 @@ def search_contacts(
                 for attr in ("FullName", "Email1Address", "CompanyName", "JobTitle")
             ).lower()
             if _matches_all(haystack, words):
-                row = _contact_summary(c)
+                row = {**_contact_summary(c), "store_id": mailbox.store_id}
                 row["folder"] = path
                 row["source"] = "contacts"
                 results.append(row)
@@ -173,8 +196,9 @@ def search_contacts(
 
     searched_directory = False
     if include_directory and len(results) < limit:
-        searched_directory = True
-        for row in _search_directory(namespace, words, limit - len(results)):
+        directory = _directory_for_store(namespace, mailbox)
+        searched_directory = directory is not None
+        for row in _search_directory(directory, words, limit - len(results)):
             if row.get("email") and str(row["email"]).lower() in seen_emails:
                 continue
             results.append(row)
@@ -182,22 +206,25 @@ def search_contacts(
     return {
         "query": query,
         "count": len(results),
+        "store_id": mailbox.store_id,
         "items": results,
         "searched_directory": searched_directory,
     }
 
 
-def get_contact(outlook: Any, namespace: Any, *, entry_id: str) -> dict[str, Any]:
-    return _contact_full(get_item_by_id(namespace, entry_id))
+def get_contact(namespace: Any, mailbox: Mailbox, *, entry_id: str) -> dict[str, Any]:
+    contact = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_CONTACT)
+    return {**_contact_full(contact), "store_id": mailbox.store_id}
 
 
-def resolve_name(outlook: Any, namespace: Any, *, name: str) -> dict[str, Any]:
+def resolve_name(namespace: Any, mailbox: Mailbox, *, name: str) -> dict[str, Any]:
     """Resolve a name or address against the address book / directory.
 
     Same mechanism Outlook uses when you type a name in To: and press
     Ctrl+K. Unique matches resolve; ambiguous ones don't (no UI is
     shown), in which case the caller should try a fuller name.
     """
+    mailbox.require_only_store(namespace, "Profile address-book resolution")
     recipient = namespace.CreateRecipient(name)
     recipient.Resolve()
     if not recipient.Resolved:
