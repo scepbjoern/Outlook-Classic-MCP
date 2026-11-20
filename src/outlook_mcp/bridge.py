@@ -242,7 +242,8 @@ class OutlookBridge:
                     break
                 if job is None:
                     # A request observed a failed attach and asked us to try again.
-                    self._attach()
+                    if self._state == "reconnecting":
+                        self._attach()
                     continue
                 if not job.result.set_running_or_notify_cancel():
                     continue
@@ -252,7 +253,7 @@ class OutlookBridge:
                     job.result.set_exception(exc)
                 else:
                     job.result.set_result(value)
-                if self._state == "reconnecting":
+                if self._state == "reconnecting" and self._session is not None:
                     self._attach()
         finally:
             self._outlook = self._namespace = self._session = None

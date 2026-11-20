@@ -372,7 +372,8 @@ def test_queued_write_cannot_cross_session_boundary(bridge):
     write.assert_not_called()
 
 
-def test_replay_rechecks_exact_store_even_if_profile_name_is_unchanged(monkeypatch):
+@pytest.mark.parametrize("failed_before_selection", [False, True])
+def test_replay_rechecks_exact_store_even_if_profile_name_is_unchanged(monkeypatch, failed_before_selection):
     from win32com.client import dynamic
     from outlook_mcp.server import build_server
     from tests.test_mailbox import make_profile
@@ -380,13 +381,19 @@ def test_replay_rechecks_exact_store_even_if_profile_name_is_unchanged(monkeypat
     original, replacement = make_profile(("a",)), make_profile(("b",))
     for ns in (original, replacement):
         ns.CurrentProfileName = "Synthetic profile"
-    original.Stores[0].GetDefaultFolder.side_effect = _rpc_unavailable()
+    if failed_before_selection:
+        from unittest.mock import PropertyMock
+        type(original).Accounts = PropertyMock(side_effect=_rpc_unavailable())
+        error = "Cannot verify the original store"
+    else:
+        original.Stores[0].GetDefaultFolder.side_effect = _rpc_unavailable()
+        error = "Unknown Outlook (account|store_id)"
     applications = [SimpleNamespace(GetNamespace=Mock(return_value=ns)) for ns in (original, replacement)]
     monkeypatch.setattr(dynamic, "Dispatch", Mock(side_effect=applications))
     server, bridge = build_server()
     bridge.start()
     try:
-        with pytest.raises(Exception, match="Unknown Outlook (account|store_id)"):
+        with pytest.raises(Exception, match=error):
             asyncio.run(server.call_tool("outlook_list_mails", {}))
         replacement.Stores[0].GetDefaultFolder.assert_not_called()
     finally:

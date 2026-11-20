@@ -163,6 +163,7 @@ class MailboxSelection:
 
     account: str | None
     store_id: str | None
+    attempted: bool = False
 
 
 def call_in_mailbox(
@@ -170,6 +171,11 @@ def call_in_mailbox(
     access: Access, selection: MailboxSelection, arguments: dict[str, Any],
     calendar_privacy: CalendarPrivacy | None = None,
 ) -> Any:
+    if selection.attempted and not selection.store_id:
+        # The original provider may have failed while enumerating accounts.
+        # Even the same named profile can now contain a different default store.
+        raise OutlookError("Cannot verify the original store for this read. Check the account and StoreID.")
+    selection.attempted = True
     mailbox = MailboxProfile(namespace, policy, calendar_privacy).resolve(
         selection.account, selection.store_id, access,
     )

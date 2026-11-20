@@ -63,6 +63,8 @@ For example, see the [isolated Windows smoke test](outlook-readiness-smoke.md).
 On disconnect, an eligible read can run once more within the original call
 budget if the bridge confirms the same loaded profile. It resolves permissions
 again using the account and store pinned when the original lookup succeeded.
+If that lookup failed before it could identify a store, replay requires an
+explicit original StoreID. Check the authorized stores before issuing a new read.
 Side effects, including exporting attachments to disk, never receive this
 automatic replay. If a meeting Save returned before a later invitation step
 failed, the error reports the known local save and the uncertain remaining
