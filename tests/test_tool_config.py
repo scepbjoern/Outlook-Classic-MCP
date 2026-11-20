@@ -182,6 +182,17 @@ def test_default_path_permission_error_fails_closed(monkeypatch):
         load_tool_policy()
 
 
-def test_json_decoder_limits_are_config_errors():
-    with pytest.raises(ToolConfigError, match="Invalid JSON"):
+def test_deeply_nested_non_object_config_is_rejected():
+    # Some CPython decoders can parse this depth; the root schema still rejects it.
+    with pytest.raises(ToolConfigError):
         parse_tool_policy("[" * 2000 + "]" * 2000)
+
+
+def test_json_decoder_limits_are_config_errors(monkeypatch):
+    def exceeded_limit(*args, **kwargs):
+        raise RecursionError("synthetic decoder limit")
+
+    monkeypatch.setattr(json, "loads", exceeded_limit)
+    with pytest.raises(ToolConfigError, match="Invalid JSON") as error:
+        parse_tool_policy("{}")
+    assert isinstance(error.value.__cause__, RecursionError)

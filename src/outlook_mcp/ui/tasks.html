@@ -129,7 +129,7 @@ $("list").addEventListener("click", async ev => {
   try {
     await MCPApp.callTool("outlook_complete_task", { store_id: t.store_id, entry_id: t.entry_id });
     t.complete = true;
-    MCPApp.updateModelContext("User completed the task “" + (t.subject || "(untitled)") + "” via the tasks view.");
+    MCPApp.updateModelContext("User completed the task via the tasks view.");
     if (!includeCompleted) tasks = tasks.filter(x => x !== t);
     load({ items: tasks });
   } catch (e) {
@@ -147,7 +147,7 @@ async function addTask() {
     if ($("newDue").value) args.due_date = $("newDue").value;
     await MCPApp.callTool("outlook_create_task", args);
     $("newSubj").value = ""; $("newDue").value = "";
-    MCPApp.updateModelContext("User added the task “" + subj + "” via the tasks view.");
+    MCPApp.updateModelContext("User added the task via the tasks view.");
     await refresh();
   } catch (e) {
     $("error").innerHTML = '<div class="banner">' + esc(e.message) + "</div>";
