@@ -18,7 +18,7 @@ Activate whenever the user wants to do something with their Outlook data. The us
 - **Tasks**: "remind me to send the report Monday", "mark the budget task done"
 - **Categories / rules / OOO**: "tag that email as Important", "is my OOO still on?", "turn off the rule that auto-files Jira mail"
 
-If `outlook_*` tools are not available in the session, the underlying integration isn't installed yet. Don't guess or improvise — instead, read `references/setup.md` and walk the user through installing it (Windows + classic Outlook + a one-line install + restart their MCP client). After install they restart the client and the tools appear.
+If `outlook_*` tools are not available in the session, the underlying integration isn't installed yet. Don't guess or improvise — instead, read `references/setup.md` and walk the user through installing it (Windows + classic Outlook + a reviewed source install + restart their MCP client). After install they restart the client and the tools appear.
 
 ## Tool catalog
 
