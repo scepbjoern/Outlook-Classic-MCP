@@ -1,3 +1,4 @@
+# Direct dependency ranges for compatibility. Install the fork using uv.lock and install.bat.
 mcp==1.30.0
 pydantic>=2.6
 pywin32>=306; sys_platform == "win32"

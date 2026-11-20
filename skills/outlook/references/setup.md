@@ -10,85 +10,14 @@ Ask the user to confirm each one. If any answer is no, stop and address that bef
 
 1. **Windows 10 or 11.** macOS and Linux are not supported — there is no Outlook COM API there.
 2. **Classic Outlook desktop is installed** (the `OUTLOOK.EXE` shipped with Microsoft 365 / Office). The "new" Outlook (`olk.exe`) does **not** expose COM and the integration cannot talk to it. Quick test: ask the user to open Outlook; if the title bar shows a "New Outlook" toggle and it's on, ask them to switch it off (toggle to "off" → Outlook restarts as classic).
-3. **Python 3.10 or newer.** If they don't have it, the source-install path below uses `uv` to fetch Python 3.11 automatically — they don't need to install Python separately for that path.
-4. **An Outlook account already signed in.** The integration piggybacks on whatever account Outlook is signed into. There is no separate auth flow, no Microsoft Graph, no Entra app, no OAuth tokens. If Outlook isn't signed in, sign in first.
-
-The user does **not** need to have Outlook open before install; the integration auto-launches Outlook on its first call.
-
-## Install path A — agent plugin (simplest, recommended)
-
-The whole repo ships as a **plugin** (single-plugin marketplace). The format started in Claude Code and is also supported by other agents (Cowork, Copilot, Cursor, etc.) — if the user's agent supports plugins, point its plugin install flow at `anasahmed07/Outlook-Classic-MCP`. Installing the plugin registers both the MCP server *and* this skill in one step. The MCP server itself is fetched and run on demand by `uvx` directly from PyPI ([outlook-classic-mcp](https://pypi.org/project/outlook-classic-mcp/)) — no `pip install`, no `git clone`, no `.venv` to maintain. The slash commands below are Claude Code's; other agents have their own equivalent.
-
-### Prereq: `uv` on PATH
-
-The plugin's MCP server entry uses `uvx`, Astral's zero-install Python launcher. If the user doesn't have `uv` yet, install it once — it's a single command:
-
-PowerShell (recommended on Windows):
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Then **open a fresh terminal** (PATH refresh) before continuing.
-
-Confirm it's there: `uv --version` should print a version.
-
-### Install the plugin
-
-Two slash commands inside Claude Code, in this order:
-
-```text
-/plugin marketplace add anasahmed07/Outlook-Classic-MCP
-/plugin install outlook@outlook-classic-mcp
-```
-
-`anasahmed07/Outlook-Classic-MCP` is the GitHub `owner/repo`. The first command adds the marketplace, the second picks the `outlook` plugin out of it.
-
-Restart Claude Code (`/quit`, then reopen). On first call, `uvx` resolves and caches the package — there's a one-time 5–15 second pause while it installs. Subsequent calls are instant.
-
-Confirm it works: `outlook_whoami` should return the bound mailbox.
-
-### Updating later
-
-```text
-/plugin marketplace update outlook-classic-mcp
-/plugin update outlook@outlook-classic-mcp
-```
-
-To pick up a new MCP server release on PyPI without changing the plugin, `uvx` re-resolves on its own cache TTL. To force a refresh: `uv cache clean outlook-classic-mcp`.
-
-### Manual override: not using uv
-
-If the user can't or won't install uv, edit the plugin's `mcpServers` entry (the file `/plugin list` points at) to use the system Python instead:
-
-```json
-"mcpServers": {
-  "outlook": {
-    "command": "python",
-    "args": ["-m", "outlook_mcp"]
-  }
-}
-```
-
-…and have them `pip install outlook-classic-mcp` once. Functionally identical; loses the venv isolation that `uvx` gives you for free.
-
-## Install path B — from PyPI (when plugin install isn't available)
-
-For any other MCP client — Cursor, Cline, Continue, Windsurf, Claude Desktop, VS Code / Copilot agent mode, or anywhere else — install the package directly from PyPI using `uv`:
-
-```bat
-uv pip install --system outlook-classic-mcp
-python -m outlook_mcp.scripts.install_to_clients
-```
-
-The second command auto-detects which MCP clients are installed and registers the server with the ones the user picks (see "Registering with MCP clients" below). Re-running it is idempotent — it updates existing entries.
-
-`--system` writes to the system Python install so `python -m outlook_mcp` resolves anywhere; drop the flag if the user is installing into an active venv. If they don't have `uv` yet, refer them to path A above for the one-line installer.
-
-The package is published at https://pypi.org/project/outlook-classic-mcp/ — `uv pip install` should always succeed on a Windows machine with Python 3.10+.
+3. **Install the reviewed Windows fork** following [installation and updates](../../../docs/installation.md).
+   Use the absolute path of its installed Python for the client.
+4. **Use an isolated Outlook profile for integration checks.** The real server
+   attaches to the signed-in classic Outlook session at startup.
 
 ## Registering with MCP clients
 
-The smart client installer (`scripts/install_to_clients.py`, also reachable as `python -m outlook_mcp.scripts.install_to_clients`) auto-detects which MCP-aware clients are installed on the machine and shows a checkbox menu:
+The smart client installer (`scripts/install_to_clients.py` in the checkout) auto-detects which MCP-aware clients are installed on the machine and shows a checkbox menu:
 
 ```
 Select which clients to register outlook-mcp with:
@@ -107,8 +36,8 @@ For clients the installer doesn't know (e.g. VS Code / Copilot agent mode), add 
 
 ```json
 "outlook": {
-  "command": "uvx",
-  "args": ["--from", "outlook-classic-mcp", "outlook-mcp"]
+  "command": "C:/Tools/outlook-reviewed/.venv/Scripts/python.exe",
+  "args": ["-m", "outlook_mcp"]
 }
 ```
 
@@ -145,7 +74,7 @@ Walk the user through these in order when something doesn't work:
 ### "I installed it but `outlook_*` tools still don't show up."
 
 1. Did they fully quit and reopen the MCP client (not just minimize / new chat)?
-2. Did the install register with the client they're actually using? Re-run `python -m outlook_mcp.scripts.install_to_clients` and confirm the right client is checked.
+2. Did the install register with the client they're actually using? Re-run `.\.venv\Scripts\python.exe scripts\install_to_clients.py` and confirm the right client is checked.
 3. For Claude Desktop / Cursor / Cline / Continue / Windsurf, ask them to open the MCP config file and confirm an entry like:
    ```json
    "outlook": {

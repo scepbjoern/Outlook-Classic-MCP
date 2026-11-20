@@ -1,49 +1,75 @@
-name: Publish to PyPI
-
+name: Verify release packages
 
 on:
-  workflow_dispatch:
-  push:
+  pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified distributions for the selected release tag to PyPI
+        required: true
+        type: boolean
+        default: false
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+permissions:
+  contents: read
 
 jobs:
+  package:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Install the reviewed build tool
+        run: |
+          python -m pip install --only-binary=:all: uv==0.13.9
+      - name: Install the locked fork from source
+        run: .\install.bat
+      - name: Build sdist and wheel offline
+        run: uv build --offline --python .venv/Scripts/python.exe
+      - name: Check package boundaries and hash the artifacts
+        run: .\.venv\Scripts\python.exe scripts/verify_dist.py dist
+      - name: Prepare an independent environment with only locked runtime dependencies
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/wheel-test
+        run: uv sync --locked --no-dev --no-install-project --python 3.12.16
+      - name: Install and inspect the exact wheel offline
+        run: |
+          $python = Join-Path $env:RUNNER_TEMP 'wheel-test/Scripts/python.exe'
+          $wheel = (Get-Item dist/*.whl).FullName
+          uv pip install --offline --no-deps --python $python $wheel
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          uv pip check --python $python
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $python -I -c "from importlib.metadata import distribution; import outlook_mcp; d=distribution('outlook-classic-mcp'); assert d.version == outlook_mcp.__version__; assert d.entry_points['outlook-mcp'].load(); print(d.version)"
+      - name: Check the release tag, fork project and registry
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        env:
+          PYPI_PROJECT: ${{ vars.PYPI_PROJECT }}
+        run: .\.venv\Scripts\python.exe scripts/check_pypi.py
+      - name: Pass verified distributions to the publisher
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: distributions
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+
   publish:
-    runs-on: ubuntu-latest
-    environment: main
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-24.04
+    environment: pypi
     permissions:
       id-token: write
-      contents: read
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          python-version: "3.12"
-
-      - name: Check if version is new
-        id: version_check
-        run: |
-          VERSION=$(python -c "import tomllib; data=tomllib.load(open('pyproject.toml','rb')); print(data['project']['version'])")
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/outlook-classic-mcp/$VERSION/json")
-          if [ "$STATUS" = "200" ]; then
-            echo "new_version=false" >> $GITHUB_OUTPUT
-            echo "Version $VERSION already exists on PyPI — skipping publish."
-          else
-            echo "new_version=true" >> $GITHUB_OUTPUT
-            echo "Version $VERSION is new — proceeding with publish."
-          fi
-
-      - name: Install build tools
-        if: steps.version_check.outputs.new_version == 'true'
-        run: pip install build
-
-      - name: Build package
-        if: steps.version_check.outputs.new_version == 'true'
-        run: python -m build
-
-      - name: Publish to PyPI
-        if: steps.version_check.outputs.new_version == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
+          name: distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1

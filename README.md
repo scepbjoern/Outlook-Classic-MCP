@@ -20,55 +20,20 @@ registration, no Microsoft Graph API, no OAuth tokens.**
 - **Outlook desktop (Classic)** — the `OUTLOOK.EXE` shipped with
   Microsoft 365 / Office. The "new Outlook" (`olk.exe`) is **not**
   supported (no COM surface).
-- Python 3.10+ (the installer fetches Python 3.11 via `uv` if you
-  don't already have one).
-
-You do **not** need to open Outlook before starting the server — the
-server auto-launches Outlook on its first COM call.
-
----
+- Git and uv 0.13.9 for installation. The Windows bootstrap selects CPython
+  3.12.16. Only running the server requires an Outlook profile.
 
 ## Install
 
-Three paths, simplest first.
+Install from an explicitly reviewed **commit of this fork**. Choose the full
+commit ID from the reviewed change and its passing CI run. The Windows guide
+includes the copyable checkout, install and version checks, how to obtain uv,
+and how to update or roll back using separate directories.
+[Install or update the verified fork](docs/installation.md)
 
-### Option 1 — Agent plugin (recommended)
-
-The repo doubles as a **plugin marketplace**. Installing the plugin registers the MCP server *and* loads the bundled [`outlook` skill](#agent-skill) (an operational reference that teaches the agent how to drive these tools) in one step. The MCP server itself is fetched on demand by `uvx` directly from PyPI — no `git clone`, no `pip install`, no `.venv` to maintain.
-
-The plugin format started in Claude Code and is now supported by other agents too (Cowork, Copilot, Cursor, and others that adopted the plugin/skill format) — point your agent's plugin install flow at this repo. The commands below are for Claude Code:
-
-Install [`uv`](https://docs.astral.sh/uv/) once if you don't have it:
-
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Open a fresh terminal so PATH refreshes, then in any Claude Code session:
-
-```text
-/plugin marketplace add anasahmed07/Outlook-Classic-MCP
-/plugin install outlook@outlook-classic-mcp
-```
-
-Restart Claude Code (`/quit`, reopen). First call has a one-time 5–15 s pause while `uvx` resolves the package; subsequent calls are instant. Confirm with `outlook_whoami`.
-
-To update later: `/plugin marketplace update outlook-classic-mcp` then `/plugin update outlook@outlook-classic-mcp`. To pull a fresh PyPI release of the server itself: `uv cache clean outlook-classic-mcp`.
-
-### Option 2 — From PyPI with uv (any MCP client)
-
-Works for any MCP client. The smart client installer auto-registers the server with Claude Desktop, Claude Code, Cursor, Cline, Continue, and Windsurf; for other clients (e.g. VS Code / Copilot agent mode), add the server to their MCP config manually — see below.
-
-```bat
-uv pip install --system outlook-classic-mcp
-python -m outlook_mcp.scripts.install_to_clients
-```
-
-(`uv` is Astral's Python installer — see Option 1 above for the one-line install. `--system` writes to your system Python so `python -m outlook_mcp` resolves anywhere; drop the flag if you'd rather install into an active venv.)
-
-Package: <https://pypi.org/project/outlook-classic-mcp/>.
-
----
+The PyPI distribution named `outlook-classic-mcp` at version 0.3.3 comes
+from upstream. Start the installed fork with its absolute
+`.venv/Scripts/python.exe` path and arguments `-m outlook_mcp`.
 
 ## Smart client installer
 
@@ -103,8 +68,8 @@ server entry in its MCP config:
 {
   "mcpServers": {
     "outlook": {
-      "command": "uvx",
-      "args": ["--from", "outlook-classic-mcp", "outlook-mcp"]
+      "command": "C:/Tools/outlook-reviewed/.venv/Scripts/python.exe",
+      "args": ["-m", "outlook_mcp"]
     }
   }
 }
@@ -260,7 +225,7 @@ skills/outlook/
     └── setup.md              # install instructions an agent can walk a user through when the tools aren't connected yet
 ```
 
-Installing the [plugin](#option-1--agent-plugin-recommended) auto-loads this skill alongside the MCP server. For an agent that supports skills but not plugins, copy the `skills/outlook/` directory into wherever it loads skills from.
+The optional plugin uses the installed interpreter selected by `OUTLOOK_MCP_PYTHON`. See the [installation guide](docs/installation.md). For an agent that supports skills but not plugins, copy the `skills/outlook/` directory into wherever it loads skills from.
 
 ---
 
@@ -326,28 +291,9 @@ the Outlook process stays warm across calls.
 See [security development and verification](SECURITY.md) for the locked CI checks
 and the separate manual procedure for an isolated synthetic Outlook profile.
 
-```bat
-.venv\Scripts\activate
-pip install -e .[dev]
-pytest
-```
-
-Smoke test the running server with the MCP inspector:
-
-```bat
-npx @modelcontextprotocol/inspector .venv\Scripts\python.exe -m outlook_mcp
-```
-
-> The inspector mangles backslashes on Windows — use forward-slash
-> paths if you hit "ENOENT" errors.
-
-Publish to PyPI:
-
-```bat
-publish.bat
-```
-
-(`TWINE_USERNAME=__token__`, `TWINE_PASSWORD=<pypi-token>`.)
+Use a separate development checkout and run the commands in SECURITY.md.
+For package builds, origin checks and the manual publication policy, see
+[release verification](docs/release.md).
 
 ---
 
