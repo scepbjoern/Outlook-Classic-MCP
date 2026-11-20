@@ -21,7 +21,7 @@ class SyntheticBridge:
             event.Sensitivity = 2
             event.Start, event.End = datetime(2026, 11, 23, 10), datetime(2026, 11, 23, 11)
 
-    def start(self):
+    def start(self, *, wait=True):
         pass
 
     def stop(self):
@@ -30,10 +30,8 @@ class SyntheticBridge:
     async def call(self, function, *args, **kwargs):
         with self.log.open("a", encoding="utf-8") as stream:
             print(function.__name__, file=stream)
-        if function.__name__ == "call_in_mailbox":
-            kwargs.pop("retry_on_disconnect")
-            return function(None, self.namespace, *args, **kwargs)
-        return {"user": "Synthetic User"}
+        kwargs.pop("retry_on_disconnect", None)
+        return function(None, self.namespace, *args, **kwargs)
 
 
 if __name__ == "__main__":

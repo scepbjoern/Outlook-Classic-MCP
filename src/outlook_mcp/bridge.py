@@ -20,9 +20,11 @@ import queue
 import subprocess
 import threading
 import time
+from concurrent.futures import Future
+from dataclasses import dataclass
 from typing import Any, Callable
 
-from outlook_mcp.errors import is_disconnect_error
+from outlook_mcp.errors import OutlookError, WriteOutcomeUnknown, is_disconnect_error
 
 logger = logging.getLogger("outlook_mcp.bridge")
 
@@ -73,160 +75,133 @@ def _launch_outlook() -> bool:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        logger.info("Launched Outlook from %s", path)
+        logger.info("Launched classic Outlook")
         return True
-    except OSError as exc:
-        logger.warning("Failed to launch Outlook (%s): %s", path, exc)
+    except OSError:
+        logger.warning("Could not launch classic Outlook")
         return False
 
 
+_CHECK_WINDOW = (
+    "Open classic Outlook in your unlocked Windows session and check for a "
+    "profile selection, sign-in or security dialog."
+)
+
+
+@dataclass
+class _Call:
+    func: Callable[..., Any]
+    args: tuple
+    kwargs: dict
+    retry_on_disconnect: bool
+    session: object
+    deadline: float
+    result: Future
+
+
 class OutlookBridge:
-    """Owns the COM thread and dispatches work to it."""
+    """Own the STA and expose only primitive readiness information to callers."""
 
     def __init__(self) -> None:
         self._thread: threading.Thread | None = None
-        self._queue: queue.Queue = queue.Queue()
+        self._queue: queue.Queue[_Call | None] = queue.Queue()
         self._ready = threading.Event()
         self._shutdown = threading.Event()
-        # Set while the COM thread is re-attaching after Outlook died, so
-        # call() knows to extend its wait instead of timing out.
-        self._reconnecting = threading.Event()
-        self._init_error: BaseException | None = None
+        self._state = "closed"
+        # A fresh token invalidates work queued for an earlier Outlook session.
+        self._session: object | None = None
         self._outlook: Any = None
         self._namespace: Any = None
-        # Captured on the COM thread, safe to read from any thread.
-        self._mailbox_name: str = "?"
+        self._profile_name: str | None = None
 
-    def start(self) -> None:
-        """Spawn the COM thread and wait for it to attach to Outlook.
-
-        Raises whatever the COM thread raised if Dispatch failed (with a
-        friendly message — Outlook normally auto-launches; failure here
-        usually means the user denied a UAC prompt or Outlook is mid-
-        crash recovery).
-        """
-        self._thread = threading.Thread(
-            target=self._run, daemon=True, name="outlook-com"
-        )
+    def start(self, *, wait: bool = True) -> None:
+        """Start one STA. STDIO can serve diagnostics while Dispatch is blocked."""
+        if self._thread is not None:
+            raise OutlookError("The Outlook bridge has already been started.")
+        self._state = "starting"
+        self._thread = threading.Thread(target=self._run, daemon=True, name="outlook-com")
         self._thread.start()
-        if not self._ready.wait(timeout=_READY_TIMEOUT_SEC):
-            raise RuntimeError(
-                f"Outlook COM thread did not become ready within "
-                f"{_READY_TIMEOUT_SEC}s. If Outlook didn't auto-launch, "
-                "open it manually and retry."
-            )
-        if self._init_error is not None:
-            raise self._init_error
-        # Read the cached primitive — touching self._namespace from this
-        # (main) thread would raise RPC_E_WRONG_THREAD because the COM
-        # interface is marshalled to the bridge thread.
-        logger.info("Bridge ready (mailbox: %s)", self._mailbox_name)
+        if wait:
+            self._ready.wait(timeout=_READY_TIMEOUT_SEC)
+            if self._state != "ready":
+                raise self._not_ready(self._state)
 
-    def _attach(self) -> BaseException | None:
-        """Bind ``self._outlook`` / ``self._namespace``. COM thread only.
+    @staticmethod
+    def _not_ready(state: str) -> OutlookError:
+        return OutlookError(
+            f"Outlook is {state}. The operation did not start. {_CHECK_WINDOW} "
+            "Check readiness again before submitting the operation."
+        )
 
-        Returns ``None`` on success, or the error to surface to callers.
-
-        Uses dynamic (late-bound) Dispatch on purpose: pywin32's gencache
-        caches a typed proxy whose internal references carry thread
-        affinity. When install.bat pre-warms the typelib in one process
-        and the bridge later runs in a new process on a different STA
-        thread, calls into that cached wrapper raise RPC_E_WRONG_THREAD
-        (0x8001010E). The dynamic wrapper is pure IDispatch::Invoke —
-        slower per call, but marshals correctly across apartments.
-
-        When Outlook is not running, Dispatch() spawns OUTLOOK.EXE but
-        the MAPI session isn't immediately usable — `CurrentUser.Name`
-        raises E_ABORT (-2147467260) until the profile finishes loading.
-        We poll, and if the first attempt fails we also kick off
-        OUTLOOK.EXE ourselves in case Dispatch's auto-launch was blocked.
-        """
+    def _attach(self) -> bool:
+        """Attach on the STA. Never log on to, select or switch a profile."""
         from win32com.client import dynamic
 
-        self._outlook = None
-        self._namespace = None
+        self._session = self._namespace = self._outlook = self._profile_name = None
         deadline = time.monotonic() + _ATTACH_TIMEOUT_SEC
-        launched = False
-        stage = "init"
-        last_exc: BaseException | None = None
+        launch_attempted = False
         while time.monotonic() < deadline and not self._shutdown.is_set():
+            outlook = None
             try:
-                stage = "Dispatch(Outlook.Application)"
+                # Late binding avoids thread-affine generated typelib wrappers.
                 outlook = dynamic.Dispatch("Outlook.Application")
-                stage = "GetNamespace('MAPI')"
                 namespace = outlook.GetNamespace("MAPI")
-                # Capture the mailbox name as a plain string on this
-                # thread so other threads can log it without touching a
-                # COM proxy.
-                stage = "CurrentUser.Name"
-                self._mailbox_name = str(namespace.CurrentUser.Name)
-                self._outlook = outlook
-                self._namespace = namespace
-                return None
-            except BaseException as exc:  # noqa: BLE001
-                last_exc = exc
-                if not launched:
-                    logger.info(
-                        "Outlook not ready (stage=%s): %s — launching it",
-                        stage,
-                        exc,
-                    )
+                # Dispatch alone can succeed before the profile is usable.
+                namespace.CurrentUser.Name
+            except Exception:
+                if outlook is None and not launch_attempted:
+                    logger.info("Outlook is closed or still starting. Checking the interactive session.")
                     _launch_outlook()
-                    launched = True
-                time.sleep(1.5)
+                    launch_attempted = True
+                self._shutdown.wait(1.5)
+                continue
+            try:
+                name = namespace.CurrentProfileName
+                self._profile_name = name if isinstance(name, str) and name else None
+            except Exception:
+                self._profile_name = None
+            self._outlook, self._namespace = outlook, namespace
+            self._session = object()
+            self._state = "ready"
+            logger.info("Outlook session ready")
+            return True
+        self._state = "unavailable"
+        logger.warning("Outlook is unavailable. %s", _CHECK_WINDOW)
+        return False
 
-        err = RuntimeError(
-            f"Outlook bridge failed during '{stage}' after "
-            f"{_ATTACH_TIMEOUT_SEC}s: {last_exc}"
-        )
-        err.__cause__ = last_exc
-        return err
-
-    def _execute(
-        self, func: Callable[..., Any], args: tuple, kwargs: dict, holder: dict,
-        retry_on_disconnect: bool = True,
-    ) -> None:
-        """Run one queued call, transparently reconnecting if Outlook died.
-
-        Read calls can run again against the reattached profile. A disconnect
-        after a write leaves its outcome uncertain, so writes opt out of replay.
-        """
+    def _execute(self, job: _Call) -> Any:
+        if job.session is not self._session or time.monotonic() >= job.deadline:
+            raise OutlookError("Outlook session changed or the request expired. The operation did not start.")
         try:
-            holder["value"] = func(self._outlook, self._namespace, *args, **kwargs)
-            return
-        except BaseException as exc:  # noqa: BLE001 - propagated to caller
-            if self._shutdown.is_set() or not (
-                is_disconnect_error(exc) or self._connection_lost()
-            ):
-                holder["error"] = exc
-                return
-            logger.warning("Lost connection to Outlook — reconnecting")
+            return job.func(self._outlook, self._namespace, *job.args, **job.kwargs)
+        except Exception as exc:
+            disconnected = is_disconnect_error(exc) or self._connection_lost()
+            if disconnected:
+                self._state = "reconnecting"
+                logger.warning("Outlook disconnected. Reconnecting to the interactive session.")
+            if not job.retry_on_disconnect:
+                if isinstance(exc, WriteOutcomeUnknown):
+                    raise
+                if disconnected or not isinstance(exc, OutlookError):
+                    raise WriteOutcomeUnknown() from None
+                raise
+            if not disconnected:
+                raise
 
-        self._reconnecting.set()
+        previous_profile = self._profile_name
+        if not self._attach():
+            raise OutlookError(f"Outlook was closed and could not be relaunched. {_CHECK_WINDOW}")
+        if not previous_profile or previous_profile != self._profile_name:
+            raise OutlookError("Cannot confirm the same Outlook profile. Check the active profile before retrying.")
+        if time.monotonic() >= job.deadline or self._shutdown.is_set():
+            raise OutlookError("Outlook reconnected after the read expired. Request the read again.")
         try:
-            attach_err = self._attach()
-        finally:
-            self._reconnecting.clear()
-        if not retry_on_disconnect:
-            holder["error"] = RuntimeError(
-                "Outlook disconnected during the operation. Its outcome is unknown. "
-                "Check the selected store before repeating it."
-            )
-            holder["error"].__cause__ = attach_err
-            return
-        if attach_err is not None:
-            holder["error"] = RuntimeError(
-                "Outlook was closed and could not be relaunched: "
-                f"{attach_err}. Open Outlook manually and retry."
-            )
-            holder["error"].__cause__ = attach_err
-            return
-
-        logger.info("Reconnected to Outlook (mailbox: %s) — retrying call", self._mailbox_name)
-        try:
-            holder["value"] = func(self._outlook, self._namespace, *args, **kwargs)
-        except BaseException as exc:  # noqa: BLE001 - propagated to caller
-            holder["error"] = exc
+            return job.func(self._outlook, self._namespace, *job.args, **job.kwargs)
+        except Exception as exc:
+            if is_disconnect_error(exc) or self._connection_lost():
+                self._state = "reconnecting"
+                raise OutlookError(f"Outlook disconnected again during the read. {_CHECK_WINDOW}") from None
+            raise
 
     def _connection_lost(self) -> bool:
         """Probe the cached namespace proxy for a dead Outlook. COM thread only.
@@ -247,62 +222,79 @@ class OutlookBridge:
         return False
 
     def _run(self) -> None:
-        import pythoncom
-
-        # Outlook is STA-only. DISABLE_OLE1DDE matches what Office
-        # itself initializes COM with on its threads.
-        pythoncom.CoInitializeEx(
-            pythoncom.COINIT_APARTMENTTHREADED | pythoncom.COINIT_DISABLE_OLE1DDE
-        )
         try:
-            self._init_error = self._attach()
-            self._ready.set()
-            if self._init_error is not None:
-                return
+            import pythoncom
 
+            pythoncom.CoInitializeEx(
+                pythoncom.COINIT_APARTMENTTHREADED | pythoncom.COINIT_DISABLE_OLE1DDE
+            )
+        except Exception:
+            self._state = "unavailable"
+            self._ready.set()
+            logger.error("Cannot initialize Outlook COM. Check the Windows installation.")
+            return
+        try:
+            self._attach()
+            self._ready.set()
             while not self._shutdown.is_set():
-                try:
-                    func, args, kwargs, done, holder, retry_on_disconnect = self._queue.get(timeout=0.5)
-                except queue.Empty:
+                job = self._queue.get()
+                if self._shutdown.is_set():
+                    break
+                if job is None:
+                    # A request observed a failed attach and asked us to try again.
+                    self._attach()
+                    continue
+                if not job.result.set_running_or_notify_cancel():
                     continue
                 try:
-                    self._execute(func, args, kwargs, holder, retry_on_disconnect)
-                finally:
-                    done.set()
+                    value = self._execute(job)
+                except Exception as exc:
+                    job.result.set_exception(exc)
+                else:
+                    job.result.set_result(value)
+                if self._state == "reconnecting":
+                    self._attach()
         finally:
+            self._outlook = self._namespace = self._session = None
+            self._state = "closed"
+            self._ready.set()
             pythoncom.CoUninitialize()
 
-    async def call(self, func: Callable[..., Any], *args: Any, retry_on_disconnect: bool = True, **kwargs: Any) -> Any:
-        """Run ``func(outlook, namespace, *args, **kwargs)`` on the COM thread."""
-        if self._thread is None or not self._thread.is_alive():
-            raise RuntimeError("Bridge is not running. Did you forget to call start()?")
-        done = threading.Event()
-        holder: dict[str, Any] = {}
-        self._queue.put((func, args, kwargs, done, holder, retry_on_disconnect))
+    async def call(self, func: Callable[..., Any], *args: Any,
+                   retry_on_disconnect: bool = True, **kwargs: Any) -> Any:
+        """Bound the wait and atomically cancel queued work before it can start."""
+        session = self._session
+        state = self._state
+        if state != "ready" or session is None or self._shutdown.is_set():
+            if state == "unavailable" and self._thread and self._thread.is_alive():
+                # All MCP calls enter here on the event loop. Coalesce recovery
+                # requests before waking the STA. Never enqueue the operation.
+                self._state = "reconnecting"
+                self._queue.put(None)
+            raise self._not_ready(state)
 
-        loop = asyncio.get_running_loop()
-        signaled = await loop.run_in_executor(
-            None, lambda: done.wait(timeout=_CALL_TIMEOUT_SEC)
-        )
-        if not signaled and self._reconnecting.is_set():
-            # Outlook died mid-call and the COM thread is re-attaching
-            # (possibly cold-launching OUTLOOK.EXE, which takes 15-25s).
-            # Give the reconnect+retry a chance instead of timing out.
-            logger.info("Call is waiting on an Outlook reconnect — extending timeout")
-            signaled = await loop.run_in_executor(
-                None, lambda: done.wait(timeout=_ATTACH_TIMEOUT_SEC + 10)
-            )
-        if not signaled:
-            raise TimeoutError(
-                f"Outlook operation timed out after {_CALL_TIMEOUT_SEC}s. "
-                "Outlook may be waiting on a dialog (security prompt, "
-                "credential prompt, etc.) — check the Outlook window."
-            )
-        if "error" in holder:
-            raise holder["error"]
-        return holder.get("value")
+        job = _Call(func, args, kwargs, retry_on_disconnect, session,
+                    time.monotonic() + _CALL_TIMEOUT_SEC, Future())
+        result = asyncio.wrap_future(job.result)
+        self._queue.put(job)
+        try:
+            done, _ = await asyncio.wait({result}, timeout=_CALL_TIMEOUT_SEC)
+            if done:
+                return result.result()
+            if job.result.cancel():
+                raise OutlookError(f"Outlook timed out in the queue. The operation did not start. {_CHECK_WINDOW}")
+            if job.result.done():
+                return job.result.result()
+            if not retry_on_disconnect:
+                raise WriteOutcomeUnknown(f"Outlook timed out during the operation. {_CHECK_WINDOW}")
+            raise OutlookError(f"The Outlook read timed out. {_CHECK_WINDOW}")
+        finally:
+            # Also withdraw a queued request when its MCP client cancels.
+            job.result.cancel()
+            result.cancel()
 
     def stop(self) -> None:
         self._shutdown.set()
+        self._queue.put(None)
         if self._thread is not None:
             self._thread.join(timeout=5)

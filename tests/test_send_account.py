@@ -1,6 +1,10 @@
 """Sender binding and signature reloads with synthetic delivery stores."""
 from unittest.mock import MagicMock
 
+import pytest
+
+from outlook_mcp.errors import WriteOutcomeUnknown
+
 from outlook_mcp.client.mail import send_mail
 from outlook_mcp.client.mailbox import Access, MailboxProfile
 from outlook_mcp.config import AccountPolicy
@@ -41,3 +45,17 @@ def test_single_account_signature_closes_inspector_and_sends_reloaded_item():
     assert reloaded.SendUsingAccount is ns.Accounts[0]
     reloaded.Send.assert_called_once()
     assert "Hello" in draft.HTMLBody and "SIG" in draft.HTMLBody
+
+
+def test_signature_reload_failure_reports_existing_local_draft():
+    ns = make_profile(("a",))
+    target = MailboxProfile(ns, None).resolve(None, None, Access.WRITE)
+    draft = target.store.GetDefaultFolder.return_value.Items.Add.return_value
+    draft.HTMLBody = ""
+    ns.GetItemFromID.side_effect = None
+    ns.GetItemFromID.return_value = None
+    with pytest.raises(WriteOutcomeUnknown, match="saved a draft locally.*Do not repeat"):
+        send_mail(ns, target, to=["guest@example.test"], subject="Synthetic",
+                  body="Example", signature=True)
+    draft.Save.assert_called_once()
+    draft.Send.assert_not_called()
