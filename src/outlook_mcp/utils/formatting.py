@@ -105,6 +105,12 @@ def _to_markdown(data: Any) -> str:
     return "```json\n" + json.dumps(data, indent=2, default=str) + "\n```"
 
 
+def _format_sensitivity(event: dict[str, Any]) -> str:
+    value = event["sensitivity"]
+    label = event["sensitivity_label"]
+    return label if value is None else f"{label} ({value})"
+
+
 def _render_collection(data: dict[str, Any]) -> str:
     items = data["items"]
     sample = items[0]
@@ -140,6 +146,8 @@ def _render_collection(data: dict[str, Any]) -> str:
                 lines.append(f"  - location: {ev['location']}")
             if ev.get("organizer"):
                 lines.append(f"  - organizer: {ev['organizer']}")
+            if "sensitivity" in ev:
+                lines.append(f"  - sensitivity: {_format_sensitivity(ev)}")
             lines.append(f"  - id: `{ev.get('entry_id')}`")
     elif "full_name" in sample:
         for c in items:
@@ -207,6 +215,8 @@ def _render_detail(data: dict[str, Any]) -> str:
             lines.append(f"**Received:** {data['received']}")
         if data.get("start"):
             lines.append(f"**When:** {data['start']} -> {data.get('end')}")
+        if "sensitivity" in data:
+            lines.append(f"**Sensitivity:** {_format_sensitivity(data)}")
         if data.get("location"):
             lines.append(f"**Location:** {data['location']}")
         if data.get("attachments"):

@@ -10,7 +10,7 @@ from pydantic import Field
 from outlook_mcp.client import calendar as cal_client
 from outlook_mcp.ui import ui_meta, ui_result
 from outlook_mcp.client.mailbox import Access
-from outlook_mcp.schemas import AccountSelector, Recurrence, StoreSelector
+from outlook_mcp.schemas import AccountSelector, EventSensitivity, Recurrence, StoreSelector
 from outlook_mcp.utils.formatting import format_response
 from outlook_mcp.utils.safety import safe_call
 
@@ -106,6 +106,7 @@ def register(mcp, bridge) -> None:
         ] = None,
         account: AccountSelector = None,
         store_id: StoreSelector = None,
+        sensitivity: EventSensitivity = Field(default_factory=lambda: None),
     ) -> str:
         """Create a calendar event or meeting invite."""
         data = await bridge.call(
@@ -121,6 +122,7 @@ def register(mcp, bridge) -> None:
             is_online_meeting=is_online_meeting,
             reminder_minutes=reminder_minutes,
             recurrence=recurrence,
+            sensitivity=sensitivity,
         )
         return format_response(data, "json")
 
@@ -144,8 +146,9 @@ def register(mcp, bridge) -> None:
         body: Annotated[Optional[str], Field()] = None,
         account: AccountSelector = None,
         store_id: StoreSelector = None,
+        sensitivity: EventSensitivity = Field(default_factory=lambda: None),
     ) -> str:
-        """Update fields on an existing event. Only non-null fields are written."""
+        """Update selected fields on an existing event. Omit sensitivity to preserve its value."""
         data = await bridge.call(
             cal_client.update_event, Access.WRITE,
             account=account,
@@ -156,6 +159,7 @@ def register(mcp, bridge) -> None:
             end=end,
             location=location,
             body=body,
+            sensitivity=sensitivity,
         )
         return format_response(data, "json")
 
