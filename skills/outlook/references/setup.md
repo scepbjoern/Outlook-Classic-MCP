@@ -2,7 +2,9 @@
 
 The server runs in the Windows user session that has classic Outlook and the intended profile. A compatible MCP host starts the installed fork as a child process and exchanges MCP messages over standard input and output (STDIO). A client on another device can use this path only if its execution host actually runs the process in that Windows session.
 
-Install the reviewed commit of this fork. Use the absolute Python executable from that installation, arguments `-m` and `outlook_mcp`, and set `OUTLOOK_MCP_CONFIG` to the absolute path of the prepared local policy in that process's environment. The example paths below are fictional. Create the policy before connecting. An explicitly selected missing or invalid policy stops startup. A missing default policy can expose all tools.
+Select the fork installation by its reviewed **full 40-character Git commit**. The public PyPI distribution `outlook-classic-mcp==0.3.3` belongs to upstream. Follow the installation instructions for the selected commit. [Fork installation procedure](https://github.com/scepbjoern/Outlook-Classic-MCP/blob/e36cd3579897ddc36d40e3243b9a88faa43d752c/docs/installation.md)
+
+Set the STDIO command to the absolute path of that installation's `.venv/Scripts/python.exe`. Pass `-m` and `outlook_mcp` as two separate arguments, and set `OUTLOOK_MCP_CONFIG` to the absolute path of the prepared local policy in that process's environment. The example paths below are fictional. Create the policy before connecting. An explicitly selected missing or invalid policy stops startup. A missing default policy can expose all tools.
 
 | Client / execution environment | How to connect and where results go |
 | --- | --- |
