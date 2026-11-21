@@ -41,6 +41,7 @@ Tool categories (all prefixed `outlook_`):
   - Tasks: list_tasks, create_task, complete_task
   - Follow-ups: query_due (one call per explicitly requested store; report source coverage)
   - Reminders: list_reminders, preview_reminder_action, apply_reminder_action
+    For a general reminder overview use all_readable=true. For a named account select only its store.
     Show the selected alert, account, action and local snooze target. Wait for the user to confirm that preview.
   - Categories: list_categories, set_category
   - Rules: list_rules, toggle_rule  (modifies live mail rules — confirm first)

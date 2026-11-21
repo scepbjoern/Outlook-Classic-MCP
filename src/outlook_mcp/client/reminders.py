@@ -3,8 +3,8 @@
 from datetime import date, datetime
 
 from outlook_mcp.client.calendar_privacy import classify_event, event_time, native_sensitivity
-from outlook_mcp.client.calendar_target import MASTER, require_event_store
-from outlook_mcp.config import PrivacyMode
+from outlook_mcp.client.calendar_target import MASTER, mapi_store_id
+from outlook_mcp.config import PrivacyMode, normalize_identifier
 from outlook_mcp.constants import OL_CLASS_APPOINTMENT, OL_CLASS_MAIL, OL_CLASS_TASK
 from outlook_mcp.errors import OutlookError, is_disconnect_error
 from outlook_mcp.utils.formatting import to_iso
@@ -16,13 +16,24 @@ def _clock(value):
     return value.replace(tzinfo=None)
 
 
-def store_item(reminder, mailbox, namespace):
-    item = reminder.Item
+def reminder_store_id(item, namespace):
     parent_id = getattr(item.Parent, "StoreID", None)
     if isinstance(parent_id, str) and parent_id:
-        return item if mailbox.matches_store_id(parent_id) else None
-    require_event_store(item, mailbox, namespace)
-    return item
+        return parent_id
+    # Some reminders expose only a MAPI store identifier, which can be
+    # encoded differently from Store.StoreID. Resolve it before reading Class
+    # or any display properties, even when the owner is outside the request.
+    raw = mapi_store_id(item)
+    if isinstance(raw, str) and raw:
+        stores = namespace.Stores
+        for index in range(1, stores.Count + 1):
+            known = stores.Item(index).StoreID
+            if isinstance(known, str) and known and (
+                normalize_identifier(raw) == normalize_identifier(known)
+                or namespace.CompareEntryIDs(raw, known) is True
+            ):
+                return known
+    raise OutlookError("Cannot identify the reminder's store.")
 
 
 ITEM_TYPES = {OL_CLASS_APPOINTMENT: "calendar", OL_CLASS_MAIL: "mail", OL_CLASS_TASK: "task"}
@@ -98,8 +109,8 @@ def scan_reminders(namespace, project):
 
 def appointment_reminders(namespace, mailbox, mode, target):
     def project(reminder):
-        item = store_item(reminder, mailbox, namespace)
-        if item is not None and item.Class == OL_CLASS_APPOINTMENT:
+        item = reminder.Item
+        if mailbox.matches_store_id(reminder_store_id(item, namespace)) and item.Class == OL_CLASS_APPOINTMENT:
             return reminder_row(reminder, item, mailbox, "calendar", mode, target)
         return None
 

@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from pydantic import Field
 
 from outlook_mcp.client.mailbox import Access
-from outlook_mcp.client.reminder_actions import ReminderActions, list_reminders
+from outlook_mcp.client.reminder_actions import ReminderActions, list_reminders, list_store_reminders
 from outlook_mcp.errors import OutlookError
 from outlook_mcp.schemas import AccountSelector, StoreSelector
 from outlook_mcp.utils.formatting import format_response
@@ -24,14 +24,21 @@ def register(mcp, bridge):
     @safe_item_call
     async def outlook_list_reminders(
         account: AccountSelector = None, store_id: StoreSelector = None,
+        all_readable: bool = False,
         mode: Literal["active", "all"] = "active",
         limit: Annotated[int, Field(ge=1, le=200)] = 50, offset: Annotated[int, Field(ge=0)] = 0,
     ) -> str:
-        """List visible mail, task and calendar reminders in one store. Use all to include pending alerts.
+        """List visible reminders across all readable accounts with all_readable=true, or select one store.
+        Use mode=all to include pending alerts. Keep the originating store_id with each row.
         Report partial coverage. Only a returned non-null selection can be previewed."""
-        _explicit_store(account, store_id)
-        result = await bridge.call(list_reminders, Access.READ, account=account, store_id=store_id,
-                                   mode="active_reminders" if mode == "active" else "all", limit=limit, offset=offset)
+        args = dict(mode="active_reminders" if mode == "active" else "all", limit=limit, offset=offset)
+        if all_readable:
+            if account is not None or store_id is not None:
+                raise OutlookError("Choose either all_readable or a single mailbox.")
+            result = await bridge.read_all_mailboxes(list_store_reminders, **args)
+        else:
+            _explicit_store(account, store_id)
+            result = await bridge.call(list_reminders, Access.READ, account=account, store_id=store_id, **args)
         return format_response(result, "json")
 
     @mcp.tool(name="outlook_preview_reminder_action", annotations={"readOnlyHint": True, "openWorldHint": False})

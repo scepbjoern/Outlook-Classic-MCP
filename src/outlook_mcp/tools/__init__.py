@@ -1,7 +1,8 @@
 """Register allowed tools and authorize their calls on the COM thread."""
 
 from outlook_mcp.client import account as account_client
-from outlook_mcp.client.mailbox import Access, MailboxSelection, call_in_mailbox
+from outlook_mcp.client.mailbox import Access, MailboxProfile, MailboxSelection, call_in_mailbox
+from outlook_mcp.errors import OutlookError
 
 from outlook_mcp.config import TOOL_GROUPS, ToolConfigError, ToolPolicy
 
@@ -50,6 +51,25 @@ class _MailboxBridge:
 
     async def identity(self):
         return await self._bridge.call(account_client.whoami, self._accounts)
+
+    async def read_all_mailboxes(self, operation, **kwargs):
+        original = None
+
+        def read(outlook, namespace):
+            nonlocal original
+            profile = MailboxProfile(namespace, self._accounts, self._calendar_privacy)
+            mailboxes = [m for m in profile.mailboxes if Access.READ in profile.permissions(m)]
+            scope = {(m.smtp_address, m.store_id) for m in mailboxes}
+            if not scope:
+                raise OutlookError("No readable delivery stores are available.")
+            if original is not None and original != scope:
+                raise OutlookError("The readable accounts changed during reconnect. Refresh the reminder list.")
+            original = scope
+            result = operation(namespace, mailboxes, **kwargs)
+            result["stores"] = [{"account": m.smtp_address, "store_id": m.store_id} for m in mailboxes]
+            return result
+
+        return await self._bridge.call(read)
 
 
 class _PolicyToolRegistration:

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from outlook_mcp.client.calendar_target import EXCEPTION, OCCURRENCE, SINGLE, selection_fields
-from outlook_mcp.client.reminders import ITEM_TYPES, _clock, reminder_row, scan_reminders, store_item
+from outlook_mcp.client.reminders import ITEM_TYPES, _clock, reminder_row, reminder_store_id, scan_reminders
 from outlook_mcp.config import normalize_identifier
 from outlook_mcp.errors import OutlookError, is_disconnect_error
 from outlook_mcp.utils.formatting import to_iso
@@ -25,9 +25,10 @@ class Candidate:
     selection: str | None
 
 
-def _candidate(reminder, namespace, mailbox, mode):
-    item = store_item(reminder, mailbox, namespace)
-    if item is None:
+def _candidate(reminder, namespace, mailboxes, mode):
+    item = reminder.Item
+    mailbox = mailboxes.get(normalize_identifier(reminder_store_id(item, namespace)))
+    if mailbox is None:
         return None
     item_type = ITEM_TYPES.get(item.Class)
     if item_type is None:
@@ -35,6 +36,7 @@ def _candidate(reminder, namespace, mailbox, mode):
     row = reminder_row(reminder, item, mailbox, item_type, mode)
     if row is None:
         return None
+    row.update(account=mailbox.smtp_address, store_id=mailbox.store_id)
     candidate = Candidate(reminder, row, None, None)
     try:
         entry_id = item.EntryID
@@ -63,8 +65,8 @@ def _candidate(reminder, namespace, mailbox, mode):
     return candidate
 
 
-def _candidates(namespace, mailbox, mode):
-    candidates, coverage = scan_reminders(namespace, lambda r: _candidate(r, namespace, mailbox, mode))
+def _candidates(namespace, mailboxes, mode):
+    candidates, coverage = scan_reminders(namespace, lambda r: _candidate(r, namespace, mailboxes, mode))
     counts = Counter(c.identity for c in candidates if c.identity and c.row["status"] == "active")
     for candidate in candidates:
         if counts[candidate.identity] != 1:
@@ -73,17 +75,24 @@ def _candidates(namespace, mailbox, mode):
 
 
 def list_reminders(namespace, mailbox, *, mode, limit, offset):
-    candidates, coverage = _candidates(namespace, mailbox, mode)
+    return {"account": mailbox.smtp_address, "store_id": mailbox.store_id,
+            **list_store_reminders(namespace, [mailbox], mode=mode, limit=limit, offset=offset)}
+
+
+def list_store_reminders(namespace, mailboxes, *, mode, limit, offset):
+    by_store = {normalize_identifier(m.store_id): m for m in mailboxes}
+    candidates, coverage = _candidates(namespace, by_store, mode)
     rows = [c.row | {"selection": c.selection if coverage == "complete" else None} for c in candidates]
     rows.sort(key=lambda r: (r["reminder_at"] or "", r["item_type"], r["subject"] or "", r["selection"] or ""))
     page = rows[offset:offset + limit]
     end = offset + len(page)
-    return {"account": mailbox.smtp_address, "store_id": mailbox.store_id, "coverage": coverage,
+    return {"coverage": coverage,
             "items": page, "count": len(page), "next_offset": end if end < len(rows) else None}
 
 
 def _resolve(namespace, mailbox, selection):
-    candidates, coverage = _candidates(namespace, mailbox, "active_reminders")
+    by_store = {normalize_identifier(mailbox.store_id): mailbox}
+    candidates, coverage = _candidates(namespace, by_store, "active_reminders")
     if coverage != "complete":
         raise OutlookError("Outlook could not verify the reminder collection. Refresh the active list.")
     matches = [c for c in candidates if c.selection == selection]
@@ -91,7 +100,7 @@ def _resolve(namespace, mailbox, selection):
         raise OutlookError("The reminder disappeared, changed or is ambiguous. Refresh the active list.")
     # The collection was enumerated by position. Act on the verified COM object
     # itself, re-reading its store, occurrence, disclosure and state after the scan.
-    candidate = _candidate(matches[0].reminder, namespace, mailbox, "active_reminders")
+    candidate = _candidate(matches[0].reminder, namespace, by_store, "active_reminders")
     if candidate is None or candidate.selection != selection:
         raise OutlookError("The selected reminder changed during verification. Refresh the active list.")
     return candidate

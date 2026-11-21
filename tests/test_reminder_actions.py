@@ -270,3 +270,56 @@ def test_disconnect_during_dismiss_consumes_confirmation_without_replaying(monke
         selected.Dismiss.assert_called_once_with()
     finally:
         bridge.stop()
+
+
+def test_combined_read_paginates_and_preserves_account_and_occurrence_for_preview():
+    first, second = alert("same", store="store-a"), alert("same", state=2)
+    second.Item.StartUTC = datetime(2026, 11, 22, 10)
+    ns, call = profile(first, second)
+    page = call("list_reminders", all_readable=True, limit=1)
+    following = call("list_reminders", all_readable=True, limit=1, offset=page["next_offset"])
+    assert page["coverage"] == following["coverage"] == "complete"
+    assert {m["store_id"] for m in page["stores"]} == {"store-a", "store-b"}
+    rows = {r["store_id"]: r for r in page["items"] + following["items"]}
+    assert rows["store-a"]["selection"] != rows["store-b"]["selection"]
+    receipt = preview(call, rows["store-b"]["selection"])
+    assert receipt["reminder"]["original_start"] == "2026-11-22T10:00:00+00:00"
+    apply(call, receipt)
+    first.Dismiss.assert_not_called()
+    second.Dismiss.assert_called_once()
+    with pytest.raises(Exception, match="either"):
+        call("list_reminders", all_readable=True, **STORE)
+
+
+def test_foreign_mapi_alias_is_skipped_before_details_and_unknown_owner_remains_partial():
+    class Foreign:
+        Parent = SimpleNamespace(StoreID=None)
+        PropertyAccessor = Mock()
+
+        def __getattr__(self, name):
+            pytest.fail("Accessed foreign item field " + name)
+
+    foreign = Foreign()
+    foreign.PropertyAccessor.BinaryToString.return_value = "aliased-a"
+    ns, call = profile(SimpleNamespace(Item=foreign), alert("permitted"), read=("b",))
+    ns.CompareEntryIDs.side_effect = lambda raw, known: raw == "aliased-a" and known == "store-a"
+    for arguments in (STORE, {"all_readable": True}):
+        result = call("list_reminders", **arguments)
+        assert result["coverage"] == "complete"
+        row, = result["items"]
+        assert row["subject"] == "permitted" and row["selection"]
+    assert result["stores"] == [{"account": "b@example.test", "store_id": "store-b"}]
+    assert preview(call, row["selection"])["store_id"] == "store-b"
+    foreign.PropertyAccessor.BinaryToString.return_value = "unverifiable"
+    for arguments in (STORE, {"all_readable": True}):
+        result = call("list_reminders", **arguments)
+        assert result["coverage"] == "partial" and result["items"][0]["selection"] is None
+
+
+def test_aggregate_respects_account_privacy_and_rejects_zero_readable_stores():
+    a, b = alert("hidden", store="store-a", sensitivity=2), alert("private", sensitivity=2)
+    ns, call = profile(a, b, privacy={"default": "busy_only", "accounts": {"b@example.test": "full"}})
+    row, = call("list_reminders", all_readable=True)["items"]
+    assert row["store_id"] == "store-b" and row["subject"] is None
+    with pytest.raises(Exception, match="No readable"):
+        registered(ns, read=())("list_reminders", all_readable=True)

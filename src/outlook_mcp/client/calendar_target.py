@@ -17,6 +17,11 @@ _REPLACE_TIME = "http://schemas.microsoft.com/mapi/id/{00062002-0000-0000-C000-0
 _STORE_ENTRYID = "http://schemas.microsoft.com/mapi/proptag/0x0FFB0102"
 
 
+def mapi_store_id(item: Any) -> str:
+    accessor = item.PropertyAccessor
+    return accessor.BinaryToString(accessor.GetProperty(_STORE_ENTRYID))
+
+
 def require_event_store(event: Any, mailbox: Mailbox, namespace: Any) -> None:
     parent = event.Parent
     parent_id = getattr(parent, "StoreID", None)
@@ -24,8 +29,7 @@ def require_event_store(event: Any, mailbox: Mailbox, namespace: Any) -> None:
         mailbox.require_store(parent)
         return
     # Some expanded items have only a MAPI store identity.
-    accessor = event.PropertyAccessor
-    store = accessor.BinaryToString(accessor.GetProperty(_STORE_ENTRYID))
+    store = mapi_store_id(event)
     if isinstance(store, str) and store:
         if mailbox.matches_store_id(store) or namespace.CompareEntryIDs(store, mailbox.store_id) is True:
             return
