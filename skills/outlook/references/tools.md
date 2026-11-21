@@ -6,7 +6,7 @@ Use the active connection's `tools/list` for available names and input schemas. 
 
 ## Contents
 
-- [Mail](#mail) — list_mails, search_mails, get_mail, send_mail, reply_mail, forward_mail, move_mail, delete_mail, mark_mail, save_attachments
+- [Mail](#mail) — list_mails, search_mails, get_mail, draft_mail, send_mail, reply_mail, forward_mail, move_mail, delete_mail, mark_mail, save_attachments
 - [Folders](#folders) — list_folders, create_folder
 - [Calendar](#calendar) — list_events, get_event, create_event, update_event, delete_event, respond_event
 - [Contacts](#contacts) — list_contacts, search_contacts, get_contact, resolve_name
@@ -73,6 +73,16 @@ Fetch the body, all headers, and the attachment manifest for one mail. Read-only
 
 `attachments[].index` is **1-indexed**; pass it to `save_attachments` to save a single file.
 
+### `outlook_draft_mail`
+
+Save one new message in the selected account's Drafts folder. Uses the
+composition fields in the table below, except `save_only`. The optional
+`signature=true` appends the account's default Outlook signature. The
+selected account requires write permission. The client previews the exact
+message and obtains one-time approval to save. The local receipt contains
+`status: "saved_to_drafts"`, `local_outcome: "saved"`, `entry_id`, `store_id`,
+`subject` and `exchange_sync: "unverified"`.
+
 ### `outlook_send_mail`
 
 Compose and send a new mail, or save it to Drafts. Has external side effect.
@@ -107,7 +117,7 @@ Reply (or reply-all) to an existing mail. The original message is appended below
 
 **Returns**: `{ status: "sent", reply_all, in_reply_to, subject }`.
 
-This sends immediately; there's no `save_only` flag on `reply_mail`. To stage a reply for review, copy the original's recipients yourself and call `send_mail` with `save_only=true` instead.
+This sends immediately. To stage a new message for review, verify the intended recipients and call `outlook_draft_mail` after confirmation.
 
 ### `outlook_forward_mail`
 

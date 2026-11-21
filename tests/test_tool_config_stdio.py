@@ -14,7 +14,7 @@ from mcp.client.stdio import get_default_environment, stdio_client
 
 # Independent of the registration table: renaming even one tool needs review.
 MAIL_NAMES = {"outlook_" + name for name in (
-    "list_mails search_mails get_mail send_mail reply_mail forward_mail move_mail delete_mail "
+    "list_mails search_mails get_mail draft_mail send_mail reply_mail forward_mail move_mail delete_mail "
     "mark_mail save_attachments"
 ).split()}
 REVIEWED_NAMES = MAIL_NAMES | {"outlook_" + name for name in (
@@ -48,7 +48,7 @@ def test_discovery_and_calls_across_restarts(tmp_path):
     async def exercise():
         async with session_at(tmp_path) as session:
             original = {tool.name: tool for tool in (await session.list_tools()).tools}
-            assert len(original) == 32
+            assert len(original) == 33
             assert original.keys() == REVIEWED_NAMES
             resources = (await session.list_resources()).resources
             config.write_text(json.dumps({"tools": {"disabled_tools": [delete]}}), encoding="utf-8")
@@ -78,6 +78,38 @@ def test_discovery_and_calls_across_restarts(tmp_path):
             denied = await session.call_tool(delete, {"entry_id": "synthetic-id"})
             assert denied.isError and f"Unknown tool: {delete}" in denied.content[0].text
             assert bridge_log.read_text(encoding="utf-8").splitlines() == ["constructed"]
+
+    asyncio.run(exercise())
+
+
+def test_draft_only_example_over_stdio(tmp_path):
+    config = tmp_path / "outlook-classic-mcp" / "config.json"
+    config.parent.mkdir()
+    example = FIXTURE.parents[1] / "examples" / "config.example.json"
+    config.write_bytes(example.read_bytes())
+    message = {"to": ["guest@example.test"], "subject": "Synthetic draft", "body": "Example"}
+
+    async def exercise():
+        async with session_at(tmp_path) as session:
+            tools = {t.name: t for t in (await session.list_tools()).tools}
+            assert set(tools) == {"outlook_whoami", "outlook_draft_mail"}
+            draft = tools["outlook_draft_mail"]
+            assert draft.annotations.readOnlyHint is False
+            assert draft.annotations.idempotentHint is False
+            assert set(draft.inputSchema["properties"]) == {
+                "account", "store_id", "to", "cc", "bcc", "subject", "body",
+                "html", "attachments", "importance", "signature",
+            }
+            send = await session.call_tool("outlook_send_mail", {**message, "store_id": "store-b"})
+            assert send.isError and "Unknown tool" in send.content[0].text
+            denied = await session.call_tool(draft.name, {**message, "store_id": "store-a"})
+            assert denied.isError and "does not grant write" in denied.content[0].text
+            saved = await session.call_tool(draft.name, {**message, "store_id": "store-b"})
+            assert not saved.isError
+            assert json.loads(saved.content[0].text) == {
+                "status": "saved_to_drafts", "local_outcome": "saved", "exchange_sync": "unverified",
+                "entry_id": "synthetic-shared-id", "store_id": "store-b", "subject": message["subject"],
+            }
 
     asyncio.run(exercise())
 

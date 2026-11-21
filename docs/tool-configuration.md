@@ -35,8 +35,7 @@ Files are limited to 1 MiB.
 
 ## Format and precedence
 
-Copy [the fictional example](../examples/config.example.json) to your local
-config location and edit it. It disables only mail deletion and the Rules group:
+This version 1 example disables mail deletion and the Rules group.
 
 ```json
 {
@@ -147,6 +146,31 @@ fields and completing tasks require write access. Mail replies, forwarding,
 moving, deletion and marking, meeting responses, event deletion, setting
 categories and toggling rules require both rights because these actions also
 return or transmit information about existing items.
+
+## Drafts with sending disabled
+
+Copy the [draft-only example policy](../examples/config.example.json) to the
+local config path and replace `b@example.test` with the intended account.
+Its version 2 allowlist exposes only `outlook_whoami` and `outlook_draft_mail`.
+Only the named account has write access. After restarting the server and
+reconnecting, verify those two names with `tools/list`. Send, reply and
+forward are unavailable even to a caller using their names directly.
+
+Configure the interactive client to prompt for each `outlook_draft_mail` call.
+For Codex, set `approval_mode = "prompt"` under
+`[mcp_servers.outlook.tools.outlook_draft_mail]` for a server named `outlook`.
+Show the account, To/Cc/Bcc, subject, body, attachments and any formatting,
+signature or importance options. Ask to save one draft in that account.
+Call once after approval of the exact preview. On cancellation stop before the
+call, and on edits request approval of the revised preview. The client owns this
+confirmation. A direct MCP caller with the configured write permission can save
+a draft without a human prompt.
+
+A successful call returns `status: "saved_to_drafts"`, `local_outcome: "saved"`,
+the local `entry_id`, `store_id` and `subject`, and `exchange_sync: "unverified"`.
+If a save or receipt is uncertain, inspect the selected account's Drafts in
+Outlook before considering a retry. Existing clients can continue to use
+`outlook_send_mail(save_only=true)` when that tool is enabled.
 
 ## Calendar privacy
 

@@ -37,7 +37,7 @@ def _tool_names(policy=None):
 
 
 def test_no_config_preserves_all_original_tools():
-    assert len(ALL_TOOLS) == 32
+    assert len(ALL_TOOLS) == 33
     assert _tool_names() == ALL_TOOLS
 
 

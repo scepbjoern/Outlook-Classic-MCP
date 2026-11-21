@@ -160,6 +160,38 @@ def register(mcp, bridge) -> None:
         return ui_result(format_response(data, response_format), data)
 
     @mcp.tool(
+        name="outlook_draft_mail",
+        annotations={
+            "title": "Save a new Outlook draft",
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": False,
+        },
+    )
+    @safe_call
+    async def outlook_draft_mail(
+        to: Annotated[list[str], Field(min_length=1, description="Recipient addresses.")],
+        subject: Annotated[str, Field(description="Subject line.")],
+        body: Annotated[str, Field(description="Message body. Plain text unless html=True.")],
+        cc: Annotated[Optional[list[str]], Field(description="CC recipients.")] = None,
+        bcc: Annotated[Optional[list[str]], Field(description="BCC recipients.")] = None,
+        html: Annotated[bool, Field(description="Treat body as HTML.")] = False,
+        attachments: Annotated[Optional[list[str]], Field(description="Absolute paths to local files.")] = None,
+        importance: Annotated[str, Field(description="One of: 'low', 'normal', 'high'.")] = "normal",
+        signature: Annotated[bool, Field(description="Append the selected account's default Outlook signature.")] = False,
+        account: AccountSelector = None,
+        store_id: StoreSelector = None,
+    ) -> str:
+        """Save one new message in the selected account's Drafts folder after client confirmation."""
+        data = await bridge.call(
+            mail_client.draft_mail, Access.WRITE, account=account, store_id=store_id,
+            to=to, subject=subject, body=body, cc=cc, bcc=bcc, html=html,
+            attachments=attachments, importance=importance, signature=signature,
+        )
+        return format_response(data, "json")
+
+    @mcp.tool(
         name="outlook_send_mail",
         annotations={
             "title": "Send Outlook mail",

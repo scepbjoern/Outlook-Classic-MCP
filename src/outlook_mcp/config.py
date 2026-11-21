@@ -20,7 +20,7 @@ from typing import Any
 TOOL_GROUPS: dict[str, tuple[str, ...]] = {
     "mail": (
         "outlook_list_mails", "outlook_search_mails", "outlook_get_mail",
-        "outlook_send_mail", "outlook_reply_mail", "outlook_forward_mail",
+        "outlook_draft_mail", "outlook_send_mail", "outlook_reply_mail", "outlook_forward_mail",
         "outlook_move_mail", "outlook_delete_mail", "outlook_mark_mail",
         "outlook_save_attachments",
     ),
