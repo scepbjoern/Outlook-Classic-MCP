@@ -35,7 +35,12 @@ def _reminder_row(reminder, mailbox, namespace, mode, target):
         raise ValueError("Unreadable reminder visibility")
     if mode == "active_reminders" and not visible:
         return None
-    next_time = _clock(reminder.NextReminderDate)
+    try:
+        next_time = _clock(reminder.NextReminderDate)
+    except Exception as exc:
+        if mode != "active_reminders" or is_disconnect_error(exc):
+            raise
+        next_time = None
     if next_time is None and mode != "active_reminders":
         raise ValueError("Unreadable reminder time")
     day = next_time.date() if next_time else None

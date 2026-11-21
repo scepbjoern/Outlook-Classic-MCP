@@ -67,7 +67,15 @@ def test_unverifiable_store_and_unreadable_reminder_are_partial():
     set_views(ns.Stores[1], [], [])
     bad_store = reminder("secret", store=None)
     bad_date = reminder("no date")
-    bad_date.NextReminderDate = None
+    class VisibleWithoutTime:
+        Item = bad_date.Item
+        IsVisible = True
+
+        @property
+        def NextReminderDate(self):
+            raise RuntimeError("unavailable")
+
+    bad_date = VisibleWithoutTime()
     ns.Application.Reminders = Collection([bad_store, bad_date, reminder("ok")])
     call = registered(ns)
     result = call("query_due", **REQUEST)
