@@ -107,7 +107,7 @@ class ToolPolicy:
             raise ToolConfigError(f"Unrecognised registered tool {name!r} in group {group!r}")
         return (
             group not in self.disabled_groups
-            and (group != "followups" or self.disabled_groups.isdisjoint({"mail", "tasks"}))
+            and (group != "followups" or self.disabled_groups.isdisjoint({"mail", "tasks", "calendar"}))
             and name not in self.disabled_tools
             and (self.enabled_groups is None or group in self.enabled_groups)
             and (self.enabled_tools is None or name in self.enabled_tools)

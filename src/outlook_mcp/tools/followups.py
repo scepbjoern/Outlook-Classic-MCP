@@ -21,16 +21,16 @@ def register(mcp, bridge) -> None:
     )
     @safe_item_call
     async def outlook_query_due(
-        mode: Literal["today", "overdue", "on_date"] = "today",
+        mode: Literal["today", "overdue", "on_date", "active_reminders"] = "today",
         local_date: Annotated[str | None, Field(description="YYYY-MM-DD, required only for on_date.")] = None,
         account: AccountSelector = None,
         store_id: StoreSelector = None,
         limit: Annotated[int, Field(ge=1, le=200)] = 50,
         offset: Annotated[int, Field(ge=0)] = 0,
     ) -> str:
-        """Query dated, outstanding flagged mail and tasks in one explicitly selected store.
-        Today and overdue use the Outlook host's local day. Appointments lack a native due
-        date. Report coverage with the results. For multiple requested stores call separately.
+        """Query flagged mail, tasks and current appointment reminders in one selected store.
+        Date modes use the local due day or next reminder day. Use active_reminders for
+        all visible calendar alerts, including past appointments. Report coverage for each store.
         """
         if account is None and store_id is None:
             raise OutlookError("Select the requested mailbox using account or store_id.")

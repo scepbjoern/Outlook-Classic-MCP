@@ -52,7 +52,7 @@ def test_disabled_groups_and_allowlists():
     policy = parse_tool_policy('{"tools":{"disabled_groups":["mail", "rules"]}}')
     assert _tool_names(policy) == ALL_TOOLS - set(TOOL_GROUPS["mail"]) - set(TOOL_GROUPS["rules"]) - {"outlook_query_due"}
 
-    for source in ("tasks", "mail"):
+    for source in ("tasks", "mail", "calendar"):
         restricted = ToolPolicy(enabled_groups=frozenset({"followups"}), disabled_groups=frozenset({source}))
         assert not _tool_names(restricted)
     assert _tool_names(ToolPolicy(enabled_groups=frozenset({"followups"}))) == {"outlook_query_due"}

@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 from outlook_mcp.constants import OL_CLASS_MAIL, OL_CLASS_TASK, OL_FOLDER_TASKS, OL_FOLDER_TODO
-from .test_mailbox import make_profile, registered
+from .test_mailbox import Collection, make_profile, registered
 
 
 DAY = date(2026, 10, 25)
@@ -34,6 +34,7 @@ def set_views(store, todo, tasks):
 
 def test_dates_status_dedup_and_pagination(monkeypatch):
     ns = make_profile()
+    ns.Application.Reminders = Collection()
     # Outlook supplies wall-clock fields. Converting either instant would change its day.
     early = datetime(2026, 10, 25, tzinfo=timezone(timedelta(hours=12)))
     late = datetime(2026, 10, 25, 23, 59, 59, tzinfo=timezone(timedelta(hours=-9)))
@@ -51,7 +52,7 @@ def test_dates_status_dedup_and_pagination(monkeypatch):
     call = registered(ns)
     result = call("query_due", **REQUEST)
     assert result["coverage"] == {"to_do": "complete", "default_tasks": "complete",
-                                  "calendar": "unsupported_no_native_due_date"}
+                                  "calendar": "complete"}
     assert result["count"] == 2 and result["store_id"] == "store-b"
     assert result["items"] == [
         {"entry_id": key, "subject": key, "status": "outstanding", "due_date": DAY.isoformat(),

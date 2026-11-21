@@ -7,6 +7,7 @@ from typing import Any
 
 from outlook_mcp.client.calendar_privacy import native_sensitivity
 from outlook_mcp.client.mailbox import Mailbox
+from outlook_mcp.client.reminders import appointment_reminders
 from outlook_mcp.constants import OL_CLASS_MAIL, OL_CLASS_TASK, OL_FOLDER_TASKS, OL_FOLDER_TODO
 from outlook_mcp.errors import OutlookError, is_disconnect_error
 
@@ -68,8 +69,13 @@ def query_due(namespace: Any, mailbox: Mailbox, *, mode: str, target: date,
               offset: int, limit: int) -> dict[str, Any]:
     # The To-Do folder can also surface tasks in the ordinary Tasks folder.
     rows = {}
-    coverage = {"calendar": "unsupported_no_native_due_date"}
-    for source, folder_type in (("to_do", OL_FOLDER_TODO), ("default_tasks", OL_FOLDER_TASKS)):
+    reminders, calendar_coverage = appointment_reminders(namespace, mailbox, mode, target)
+    coverage = {"calendar": calendar_coverage}
+    sources = (("to_do", OL_FOLDER_TODO), ("default_tasks", OL_FOLDER_TASKS))
+    for source, folder_type in sources:
+        if mode == "active_reminders":
+            coverage[source] = "not_requested"
+            continue
         coverage[source] = "complete"
         try:
             folder = mailbox.default_folder(folder_type)
@@ -86,7 +92,10 @@ def query_due(namespace: Any, mailbox: Mailbox, *, mode: str, target: date,
             if is_disconnect_error(exc):
                 raise OutlookError("Outlook disconnected while reading due items.") from exc
             coverage[source] = "partial"
-    ordered = sorted(rows.values(), key=lambda row: (row["due_date"], row["entry_id"]))
+    ordered = sorted([*rows.values(), *reminders], key=lambda row: (
+        row["due_date"] or "", row["item_type"], row.get("entry_id", ""), row.get("reminder_at") or "",
+        row["subject"] or "", row.get("appointment_start") or "",
+    ))
     page = ordered[offset:offset + limit]
     end = offset + len(page)
     return {

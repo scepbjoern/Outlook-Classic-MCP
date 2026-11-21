@@ -15,7 +15,7 @@ Use the active connection's `tools/list` inventory and input schemas. Client nam
 
 ## Due and overdue items
 
-For “What is due today?”, overdue items or a named local day, use `outlook_query_due` with an explicit mailbox. When the user selects several accounts, call once per selected StoreID and keep the results and coverage labelled by account. Follow `next_offset` for additional matches. Report a partial source or a failed store even when another store returned results. Calendar appointments have no standard follow-up due field. Mention this limitation in a cross-type answer. [Query parameters and coverage](references/tools.md#outlook_query_due)
+For “What is due today?”, overdue items or a named local day, use `outlook_query_due` with an explicit mailbox. When the user selects several accounts, call once per selected StoreID and keep the results and coverage labelled by account. Follow `next_offset` for additional matches. Report a partial source or a failed store even when another store returned results. Calendar items use the current reminder time. For the alerts still visible in Outlook, including appointments that have already ended, use `mode="active_reminders"`. Report snoozed and scheduled reminders separately when answering a date query. [Query parameters and coverage](references/tools.md#outlook_query_due)
 
 ## Calendar reads and privacy
 
