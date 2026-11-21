@@ -81,11 +81,11 @@ def reminder_row(reminder, item, mailbox, item_type, mode, target=None):
     }
 
 
-def scan_reminders(namespace, project):
+def scan_reminders(namespace, project, *, collection=None):
     rows = []
     coverage = "complete"
     try:
-        reminders = namespace.Application.Reminders
+        reminders = namespace.Application.Reminders if collection is None else collection
         count = reminders.Count
         if type(count) is not int or count < 0:
             raise ValueError("Unreadable reminder collection")

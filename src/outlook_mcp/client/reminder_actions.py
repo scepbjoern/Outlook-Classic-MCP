@@ -7,6 +7,7 @@ import json
 import secrets
 import time
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -65,8 +66,9 @@ def _candidate(reminder, namespace, mailboxes, mode):
     return candidate
 
 
-def _candidates(namespace, mailboxes, mode):
-    candidates, coverage = scan_reminders(namespace, lambda r: _candidate(r, namespace, mailboxes, mode))
+def _candidates(namespace, mailboxes, mode, *, collection=None):
+    candidates, coverage = scan_reminders(namespace, lambda r: _candidate(r, namespace, mailboxes, mode),
+                                          collection=collection)
     counts = Counter(c.identity for c in candidates if c.identity and c.row["status"] == "active")
     for candidate in candidates:
         if counts[candidate.identity] != 1:
@@ -90,9 +92,14 @@ def list_store_reminders(namespace, mailboxes, *, mode, limit, offset):
             "items": page, "count": len(page), "next_offset": end if end < len(rows) else None}
 
 
-def _resolve(namespace, mailbox, selection):
+@contextmanager
+def _live_reminder(namespace, mailbox, selection):
+    # Outlook can return different dates on a retained Reminder as soon as
+    # its parent collection proxy is released. Keep that exact collection
+    # alive from enumeration through verification and the native action.
+    collection = namespace.Application.Reminders
     by_store = {normalize_identifier(mailbox.store_id): mailbox}
-    candidates, coverage = _candidates(namespace, by_store, "active_reminders")
+    candidates, coverage = _candidates(namespace, by_store, "active_reminders", collection=collection)
     if coverage != "complete":
         raise OutlookError("Outlook could not verify the reminder collection. Refresh the active list.")
     matches = [c for c in candidates if c.selection == selection]
@@ -103,7 +110,7 @@ def _resolve(namespace, mailbox, selection):
     candidate = _candidate(matches[0].reminder, namespace, by_store, "active_reminders")
     if candidate is None or candidate.selection != selection:
         raise OutlookError("The selected reminder changed during verification. Refresh the active list.")
-    return candidate
+    yield candidate
 
 
 def _local_minute(minute):
@@ -151,7 +158,8 @@ class ReminderActions:
         self.pending: dict[str, Preview] = {}
 
     def preview(self, namespace, mailbox, *, selection, action, delay_minutes, until_local):
-        candidate = _resolve(namespace, mailbox, selection)
+        with _live_reminder(namespace, mailbox, selection) as candidate:
+            row = candidate.row
         target = _target_minute(action, delay_minutes, until_local)
         until = _local_minute(target) if target is not None else None
         token = secrets.token_urlsafe(32)
@@ -160,7 +168,7 @@ class ReminderActions:
         if len(self.pending) >= 128:
             del self.pending[next(iter(self.pending))]
         self.pending[token] = Preview(selection, mailbox.smtp_address, mailbox.store_id, action, target, until, now + 300)
-        return {"account": mailbox.smtp_address, "store_id": mailbox.store_id, "reminder": candidate.row,
+        return {"account": mailbox.smtp_address, "store_id": mailbox.store_id, "reminder": row,
                 "action": action, "until_local": until, "confirmation_token": token, "expires_in_seconds": 300}
 
     def apply(self, namespace, mailbox, *, confirmation_token):
@@ -168,18 +176,18 @@ class ReminderActions:
         if (preview is None or preview.account != mailbox.smtp_address or preview.store_id != mailbox.store_id
                 or preview.expires <= time.monotonic()):
             raise OutlookError("Missing, expired or mismatched confirmation. Request a fresh preview.")
-        candidate = _resolve(namespace, mailbox, preview.selection)
-        if preview.expires <= time.monotonic():
-            raise OutlookError("Confirmation expired during verification. Request a fresh preview.")
-        result = {"account": mailbox.smtp_address, "store_id": mailbox.store_id, "action": preview.action}
-        if preview.target is None:
-            candidate.reminder.Dismiss()
-        else:
-            remaining = preview.target - int(time.time() // 60)
-            if remaining <= 0:
-                raise OutlookError("The previewed snooze time has passed. Request a fresh preview.")
-            if _local_minute(preview.target) != preview.until_local:
-                raise OutlookError("The local timezone changed. Request a fresh preview.")
-            result["until_local"] = preview.until_local
-            candidate.reminder.Snooze(remaining)
-        return result
+        with _live_reminder(namespace, mailbox, preview.selection) as candidate:
+            if preview.expires <= time.monotonic():
+                raise OutlookError("Confirmation expired during verification. Request a fresh preview.")
+            result = {"account": mailbox.smtp_address, "store_id": mailbox.store_id, "action": preview.action}
+            if preview.target is None:
+                candidate.reminder.Dismiss()
+            else:
+                remaining = preview.target - int(time.time() // 60)
+                if remaining <= 0:
+                    raise OutlookError("The previewed snooze time has passed. Request a fresh preview.")
+                if _local_minute(preview.target) != preview.until_local:
+                    raise OutlookError("The local timezone changed. Request a fresh preview.")
+                result["until_local"] = preview.until_local
+                candidate.reminder.Snooze(remaining)
+            return result

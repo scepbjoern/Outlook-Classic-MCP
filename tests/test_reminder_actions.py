@@ -323,3 +323,42 @@ def test_aggregate_respects_account_privacy_and_rejects_zero_readable_stores():
     assert row["store_id"] == "store-b" and row["subject"] is None
     with pytest.raises(Exception, match="No readable"):
         registered(ns, read=())("list_reminders", all_readable=True)
+
+
+def test_parent_collection_survives_recheck_and_snooze():
+    import weakref
+
+    selected = alert("parent-bound")
+
+    class BoundReminder:
+        def __init__(self, collection):
+            self.parent = weakref.ref(collection)
+
+        @property
+        def NextReminderDate(self):
+            return selected.NextReminderDate if self.parent() is not None else None
+
+        def Snooze(self, minutes):
+            assert self.parent() is not None
+            selected.Snooze(minutes)
+
+        def __getattr__(self, name):
+            return getattr(selected, name)
+
+    class ProviderCollection:
+        Count = 1
+
+        def Item(self, index):
+            assert index == 1
+            return BoundReminder(self)
+
+    class Application:
+        @property
+        def Reminders(self):
+            return ProviderCollection()
+
+    ns, call = profile()
+    ns.Application = Application()
+    plan = preview(call, action="snooze", delay_minutes=1440)
+    apply(call, plan)
+    selected.Snooze.assert_called_once()
