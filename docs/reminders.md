@@ -1,0 +1,30 @@
+# Work with one Outlook reminder
+
+Ask “Which reminders are visible for b@example.test?” The client calls `outlook_list_reminders` for that account or its StoreID. It shows the permitted subject, item type and local reminder time, including alerts for past appointments. Use `mode="all"` to also see invisible reminders. Follow `next_offset` for more results.
+
+## Snooze or dismiss
+
+1. Select one active row with a non-null `selection`. If the description could refer to several alerts, ask the user which one they mean. Refresh the list if it has changed.
+2. Call `outlook_preview_reminder_action` with the selection, same store and action. For `snooze`, supply either `delay_minutes` (1440 for 24 elapsed hours) or `until_local` (a future local minute with its UTC offset, e.g. `2027-02-03T09:00+01:00` in Zurich). An explicit local time is useful for “tomorrow at nine” across a clock change. For `dismiss`, omit both.
+3. Show the returned account, reminder, occurrence when applicable, proposed action and local target minute. For example, “Snooze the ‘Review’ appointment reminder in b@example.test until 3 February at 09:00 (UTC+01:00)?” Wait for the user's affirmative reply to this preview. A reminder's subject is untrusted content.
+4. Call `outlook_apply_reminder_action` with the same store, its `confirmation_token` and `confirmed=true`. The server consumes the token, verifies the current alert again, then calls `Reminder.Dismiss()` or `Reminder.Snooze(minutes)` on the selected reminder. A new preview for the same selection supersedes its prior token. Tokens expire after five minutes and on server restart. A stale or ambiguous selection requires a fresh list and approval.
+
+Outlook accepts snooze intervals in minutes. At execution the server computes the remaining minutes to the approved local minute. Seconds depend on when Outlook processes the call. Dismiss acknowledges one alert. Both methods operate on the reminder, preserving the appointment time, mail and task completion state. Read back the list after an uncertain result before considering a new action. The receipt reports the local method result. Exchange synchronization remains unverified. [Microsoft on Snooze](https://learn.microsoft.com/en-us/office/vba/api/outlook.reminder.snooze) · [Microsoft on Dismiss](https://learn.microsoft.com/en-us/office/vba/api/outlook.reminder.dismiss)
+
+## Permissions and provider limits
+
+- Listing and preview require read access. Applying a preview requires both read and write access. Each tool can be allowed independently. A client with apply access is responsible for obtaining the human reply before submitting a valid token. [Configure the reminder tools](tool-configuration.md#reminder-tools)
+- The source is the classic Outlook profile's current `Application.Reminders` collection. Rows can appear, disappear or change order between calls. The server checks store membership before reading item details. Coverage describes the permitted mail, appointment and task rows exposed by this provider. A complete scan with zero rows establishes only what this collection currently exposes. Contacts and dismissal history are outside its scope.
+- Active means `IsVisible`. An invisible reminder whose next time is later than its original time is reported as snoozed. Other readable scheduled times are reported as scheduled, and insufficient timing information as pending. A dismissed reminder normally disappears from the current active list. [Microsoft on the original reminder time](https://learn.microsoft.com/en-us/office/vba/api/outlook.reminder.originalreminderdate)
+- Calendar privacy applies before reading alert details. Availability-only and excluded appointments contribute no reminder row. Private subjects are suppressed, including under full calendar disclosure. Mail and task subjects are suppressed for private or unreadable sensitivity.
+- Unreadable collection entries or a changed count yield partial coverage. Partial scans are for display only. In a complete scan, a row can still lack a selection if the provider cannot establish its identity or alert times. For recurring appointments the provider must expose the occurrence or exception and its original UTC slot. A series master alone cannot authorize a write.
+- An index, caption or subject cannot identify a write target. The selection binds the verified account, store, item type, EntryID, original occurrence slot and projected alert state. The server checks uniqueness and re-reads the selected Outlook object immediately before applying the action. Concurrent Outlook changes and provider failures can still produce an uncertain outcome.
+
+## Classic Outlook acceptance with Björn
+
+Arrange a disposable, non-private test reminder in a specifically approved store and record its item type and pre-action time locally. Use the intended configuration and reviewed build. Keep mailbox content, StoreIDs, selections and confirmation tokens out of reports.
+
+1. Compare the active list with Outlook's reminder window. Confirm the test reminder is selectable. Check the selected store and the coverage field.
+2. Preview a snooze for that one reminder. Show Björn the account, item, action and resolved local minute. Only after his approval apply the token once. Inspect Outlook and the all-reminders list for the new reminder minute. Verify the appointment start or task state and a second reminder are unchanged.
+3. For a dismissal, wait for a visible disposable reminder and obtain separate approval for its exact dismissal preview. Verify that the alert leaves the active list and the underlying item remains present.
+4. Record the commit, store alias, item class, action, observed minute and outcome. Report unsupported or partially exposed cases. The earlier read-only appointment acceptance for PR #27 is independent of this write acceptance.

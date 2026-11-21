@@ -366,6 +366,10 @@ In a single-account, single-store profile, resolve a display name, alias, or add
 
 ## Follow-ups
 
+### Individual reminders
+
+Use `outlook_list_reminders` with an explicit account or StoreID. Report the coverage and follow `next_offset`. The default shows visible alerts. Use `mode="all"` to also inspect snoozed and scheduled alerts. Only a non-null `selection` can be previewed. Pass it to `outlook_preview_reminder_action` with the same store and `action="dismiss"` or `action="snooze"`. For snooze supply `delay_minutes` or `until_local` with offset. Present the returned reminder, action, account and target to the user and wait. Only a new affirmative reply authorizes `outlook_apply_reminder_action` with that store, its token and `confirmed=true`. On a stale selection, refresh and ask again for a new preview. [Provider limits and acceptance scenario](../../../docs/reminders.md)
+
 ### `outlook_query_due`
 
 Read outstanding dated items. Supply an exact `account` or `store_id`, even for a single mailbox. For example, `{"store_id":"store-a","mode":"on_date","local_date":"2026-11-23"}`. Use `today` (default) or `overdue` without a date. The Outlook host's local calendar day starts at midnight. Overdue means due before today. The entire named day is inclusive, including on a daylight-saving transition.

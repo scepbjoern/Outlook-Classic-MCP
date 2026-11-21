@@ -1,6 +1,6 @@
 # Local MCP tool configuration
 
-By default, the server exposes all 32 Outlook tools. To restrict which MCP
+By default, the server exposes all 35 Outlook tools. To restrict which MCP
 operations are advertised and callable, create a **local user-specific JSON**
 configuration file. No repository configuration is required.
 
@@ -82,11 +82,15 @@ discovery:
 ```
 
 Supported groups: `mail`, `folders`, `calendar`, `contacts`, `tasks`,
-`followups`, `categories`, `rules`, `out_of_office`, `account`. Prefix the names in
+`followups`, `reminders`, `categories`, `rules`, `out_of_office`, `account`. Prefix the names in
 the [README Tools table](../README.md#tools) with `outlook_` when using them in a policy. The
 authoritative tool inventory is `src/outlook_mcp/config.py`. If you add a tool
 to the source code, add it to that inventory and update the registration tests;
 an unlisted tool decorator otherwise rejects registration.
+
+## Reminder tools
+
+The `reminders` group contains three independently configurable tools. To enable only reminder listing, allow `outlook_list_reminders` and grant the account read access. To enable individual changes, also allow `outlook_preview_reminder_action` and `outlook_apply_reminder_action` and grant that account write access. Explicitly disabling the mail, calendar or tasks group disables these cross-item tools. [Preview, confirmation and provider limits](reminders.md)
 
 ## Due query coverage
 

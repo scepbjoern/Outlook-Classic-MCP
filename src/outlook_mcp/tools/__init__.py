@@ -14,6 +14,7 @@ from . import (
     followups,
     mail,
     ooo,
+    reminders,
     rules,
     tasks,
 )
@@ -27,6 +28,7 @@ _GROUP_MODULES = {
     "tasks": tasks,
     "categories": categories,
     "rules": rules,
+    "reminders": reminders,
     "out_of_office": ooo,
     "account": account,
 }
