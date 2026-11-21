@@ -17,7 +17,8 @@ MAIL_NAMES = {"outlook_" + name for name in (
     "list_mails search_mails get_mail draft_mail send_mail reply_mail forward_mail move_mail delete_mail "
     "mark_mail save_attachments"
 ).split()}
-REVIEWED_NAMES = MAIL_NAMES | {"outlook_" + name for name in (
+REMINDER_NAMES = {"outlook_list_reminders", "outlook_preview_reminder_action", "outlook_apply_reminder_action"}
+REVIEWED_NAMES = MAIL_NAMES | REMINDER_NAMES | {"outlook_" + name for name in (
     "list_folders create_folder list_events get_event create_event update_event delete_event "
     "respond_event list_contacts search_contacts resolve_name get_contact list_tasks create_task "
     "complete_task query_due list_categories set_category list_rules toggle_rule get_out_of_office whoami"
@@ -48,7 +49,7 @@ def test_discovery_and_calls_across_restarts(tmp_path):
     async def exercise():
         async with session_at(tmp_path) as session:
             original = {tool.name: tool for tool in (await session.list_tools()).tools}
-            assert len(original) == 33
+            assert len(original) == 36
             assert original.keys() == REVIEWED_NAMES
             resources = (await session.list_resources()).resources
             config.write_text(json.dumps({"tools": {"disabled_tools": [delete]}}), encoding="utf-8")
@@ -74,7 +75,8 @@ def test_discovery_and_calls_across_restarts(tmp_path):
         config.write_text('{"tools":{"disabled_groups":["mail"]}}', encoding="utf-8")
         async with session_at(tmp_path) as session:
             available = {tool.name: tool for tool in (await session.list_tools()).tools}
-            assert available == {name: tool for name, tool in original.items() if name not in MAIL_NAMES | {"outlook_query_due"}}
+            blocked = MAIL_NAMES | REMINDER_NAMES | {"outlook_query_due"}
+            assert available == {name: tool for name, tool in original.items() if name not in blocked}
             denied = await session.call_tool(delete, {"entry_id": "synthetic-id"})
             assert denied.isError and f"Unknown tool: {delete}" in denied.content[0].text
             assert bridge_log.read_text(encoding="utf-8").splitlines() == ["constructed"]

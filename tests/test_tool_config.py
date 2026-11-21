@@ -37,7 +37,7 @@ def _tool_names(policy=None):
 
 
 def test_no_config_preserves_all_original_tools():
-    assert len(ALL_TOOLS) == 33
+    assert len(ALL_TOOLS) == 36
     assert _tool_names() == ALL_TOOLS
 
 
@@ -50,10 +50,11 @@ def test_disable_single_mail_tool_leaves_other_mail_tools():
 
 def test_disabled_groups_and_allowlists():
     policy = parse_tool_policy('{"tools":{"disabled_groups":["mail", "rules"]}}')
-    assert _tool_names(policy) == ALL_TOOLS - set(TOOL_GROUPS["mail"]) - set(TOOL_GROUPS["rules"]) - {"outlook_query_due"}
+    blocked = {name for group in ("mail", "rules", "followups", "reminders") for name in TOOL_GROUPS[group]}
+    assert _tool_names(policy) == ALL_TOOLS - blocked
 
     for source in ("tasks", "mail", "calendar"):
-        restricted = ToolPolicy(enabled_groups=frozenset({"followups"}), disabled_groups=frozenset({source}))
+        restricted = ToolPolicy(enabled_groups=frozenset({"followups", "reminders"}), disabled_groups=frozenset({source}))
         assert not _tool_names(restricted)
     assert _tool_names(ToolPolicy(enabled_groups=frozenset({"followups"}))) == {"outlook_query_due"}
 
