@@ -11,6 +11,9 @@ from outlook_mcp.config import AccountPolicy, CalendarPrivacy, PrivacyMode, is_s
 from outlook_mcp.errors import OutlookError
 
 
+DISPATCH_PROPERTYPUTREF = 8
+
+
 class Access(Flag):
     READ = auto()
     WRITE = auto()
@@ -58,16 +61,25 @@ class Mailbox:
         if not self.single_account and any(not is_smtp_address(recipient) for recipient in recipients):
             raise OutlookError("Use exact SMTP recipient addresses in a multi-account profile.")
 
-    def bind_sender(self, item: Any) -> None:
-        """Pin and verify the sending account before Outlook can send an item."""
-        item.SendUsingAccount = self.account
-        sender = item.SendUsingAccount
+    def _matches_sender(self, sender: Any) -> bool:
         store = sender.DeliveryStore if sender is not None else None
-        if (
-            store is None
-            or _identifier(store.StoreID) != _identifier(self.store_id)
-            or _identifier(sender.SmtpAddress) != _identifier(self.smtp_address)
-        ):
+        return (
+            store is not None
+            and self.matches_store_id(store.StoreID)
+            and _identifier(sender.SmtpAddress) == _identifier(self.smtp_address)
+        )
+
+    def bind_sender(self, item: Any) -> None:
+        """Pin and verify the sending account before saving or dispatching."""
+        item.SendUsingAccount = self.account
+        if self._matches_sender(item.SendUsingAccount):
+            return
+        # Late-bound Outlook can accept a property put yet keep the default
+        # sender. Assign the Account object by reference, then read it back.
+        dispatch = item._oleobj_
+        property_id = dispatch.GetIDsOfNames("SendUsingAccount")
+        dispatch.Invoke(property_id, 0, DISPATCH_PROPERTYPUTREF, 0, self.account)
+        if not self._matches_sender(item.SendUsingAccount):
             raise OutlookError("Outlook did not bind the outgoing item to the selected account.")
 
 

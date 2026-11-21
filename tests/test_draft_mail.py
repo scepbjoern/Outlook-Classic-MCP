@@ -1,4 +1,7 @@
 """Check COM effects behind the registered draft tool using two synthetic stores."""
+from types import SimpleNamespace
+from unittest.mock import PropertyMock
+
 import pytest
 
 from outlook_mcp.constants import OL_FOLDER_DRAFTS, OL_MAIL_ITEM
@@ -46,6 +49,47 @@ def test_draft_composition_and_local_save(draft_stores, signature):
         "status": "saved_to_drafts", "local_outcome": "saved", "exchange_sync": "unverified",
         "entry_id": mail.EntryID, "store_id": "store-b", "subject": MESSAGE["subject"],
     }
+
+
+@pytest.mark.parametrize(("returned_address", "returned_store", "accepted"), [
+    ("b@example.test", 1, True),
+    ("a@example.test", 1, False),
+    ("b@example.test", 0, False),
+    (None, None, False),
+])
+def test_late_bound_sender_needs_verified_object_reference(
+    draft_stores, monkeypatch, returned_address, returned_store, accepted,
+):
+    ns = draft_stores
+    folder = ns.Stores[1].GetDefaultFolder.return_value
+    mail = folder.Items.Add.return_value
+    sender = ns.Accounts[0]
+    def put_reference(property_id, locale, flags, wants_result, account):
+        nonlocal sender
+        assert (property_id, locale, flags, wants_result) == (64209, 0, 8, 0)
+        assert account is ns.Accounts[1]
+        sender = None if returned_store is None else SimpleNamespace(
+            SmtpAddress=returned_address, DeliveryStore=ns.Stores[returned_store],
+        )
+
+    # The ordinary property assignment succeeds but the getter still returns
+    # the primary account until Outlook accepts an explicit reference put.
+    prop = PropertyMock(side_effect=lambda *args: None if args else sender)
+    monkeypatch.setattr(type(mail), "SendUsingAccount", prop, raising=False)
+    dispatch = mail._oleobj_
+    dispatch.GetIDsOfNames.return_value = 64209
+    dispatch.Invoke.side_effect = put_reference
+    invoke = registered(ns)
+    if accepted:
+        assert invoke("draft_mail", store_id="store-b", **MESSAGE)["local_outcome"] == "saved"
+        mail.Save.assert_called_once_with()
+    else:
+        with pytest.raises(Exception, match="did not bind"):
+            invoke("draft_mail", store_id="store-b", **MESSAGE)
+        mail.Save.assert_not_called()
+    folder.Items.Add.assert_called_once_with(OL_MAIL_ITEM)
+    dispatch.GetIDsOfNames.assert_called_once_with("SendUsingAccount")
+    dispatch.Invoke.assert_called_once()
 
 
 def test_read_only_store_rejected_before_draft_creation(draft_stores):
