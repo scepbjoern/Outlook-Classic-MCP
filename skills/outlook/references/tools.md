@@ -10,6 +10,7 @@ Use the active connection's `tools/list` for available names and input schemas. 
 - [Folders](#folders) — list_folders, create_folder
 - [Calendar](#calendar) — list_events, get_event, create_event, update_event, delete_event, respond_event
 - [Contacts](#contacts) — list_contacts, search_contacts, get_contact, resolve_name
+- [Follow-ups](#follow-ups) — query_due
 - [Tasks](#tasks) — list_tasks, create_task, complete_task
 - [Categories](#categories) — list_categories, set_category
 - [Rules](#rules) — list_rules, toggle_rule
@@ -363,6 +364,16 @@ In a single-account, single-store profile, resolve a display name, alias, or add
 
 ---
 
+## Follow-ups
+
+### `outlook_query_due`
+
+Read outstanding dated items. Supply an exact `account` or `store_id`, even for a single mailbox. For example, `{"store_id":"store-a","mode":"on_date","local_date":"2026-11-23"}`. Use `today` (default) or `overdue` without a date. The Outlook host's local calendar day starts at midnight. Overdue means due before today. The entire named day is inclusive, including on a daylight-saving transition.
+
+The response is JSON. Each row contains `item_type` (mail, task or calendar), permitted `subject`, local `due_date` as YYYY-MM-DD and `status`. Mail and task rows include `entry_id`. Calendar reminder rows include `reminder_at` and `appointment_start` when available. Keep the enclosing `store_id` with each row. Results are ordered by date and EntryID. `limit` defaults to 50 (1–200). Pass `next_offset` as `offset` to continue until it is null. Each call reads the current views, so changes between pages can affect the order.
+
+Read `coverage` alongside `items`. The `to_do` and `default_tasks` statuses apply to those local provider views. `complete` with zero matches means no verified outstanding dated items in that view. `partial` means some reads or store checks failed, possibly including the entire folder. Rows from successful reads remain usable. If To-Do is unavailable, mail coverage is incomplete. Calendar coverage applies to permitted current reminders in this store. For calendar rows the day is the local date of `NextReminderDate`, including after snoozing. Use `mode="active_reminders"` without a date to list all visible alerts across dates. Mail and task views then report `not_requested`. Snoozed and scheduled alerts remain available in the date queries. A closed alert drops out of the collection. Absence alone cannot prove a dismissal. [Outlook properties and provider scope](../../../docs/tool-configuration.md#due-query-coverage)
+
 ## Tasks
 
 ### `outlook_list_tasks`
@@ -464,7 +475,7 @@ Returns `requires_account_selection`, authorized `accounts` (including `smtp_add
 - `conversation_id` — groups mails in a thread. Same value across replies/forwards in one conversation.
 - `from` — display name of the sender.
 - `from_address` — sender address. **For Exchange senders, this is an `EX:/O=...` distinguished name, not SMTP.** Match by substring.
-- `received` / `sent` / `start` / `end` / `due_date` — ISO-8601 strings **in the user's local timezone with explicit offset** (e.g. `2026-06-10T16:33:22+05:00`). Present as-is; never convert to another timezone.
+- Except for date-only `outlook_query_due` rows, `received` / `sent` / `start` / `end` / `due_date` — ISO-8601 strings **in the user's local timezone with explicit offset** (e.g. `2026-06-10T16:33:22+05:00`). Present as-is; never convert to another timezone.
 - `unread` — bool. Note `mark_mail` returns `unread` (not `read`).
 - `importance` — integer (0=low, 1=normal, 2=high).
 - `categories` — comma-separated string of category names; empty string = none.

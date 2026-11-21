@@ -24,6 +24,7 @@ TOOL_GROUPS: dict[str, tuple[str, ...]] = {
         "outlook_move_mail", "outlook_delete_mail", "outlook_mark_mail",
         "outlook_save_attachments",
     ),
+    "followups": ("outlook_query_due",),
     "folders": ("outlook_list_folders", "outlook_create_folder"),
     "calendar": (
         "outlook_list_events", "outlook_get_event", "outlook_create_event",
@@ -106,6 +107,7 @@ class ToolPolicy:
             raise ToolConfigError(f"Unrecognised registered tool {name!r} in group {group!r}")
         return (
             group not in self.disabled_groups
+            and (group != "followups" or self.disabled_groups.isdisjoint({"mail", "tasks", "calendar"}))
             and name not in self.disabled_tools
             and (self.enabled_groups is None or group in self.enabled_groups)
             and (self.enabled_tools is None or name in self.enabled_tools)

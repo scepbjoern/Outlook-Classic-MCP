@@ -11,6 +11,7 @@ from . import (
     categories,
     contacts,
     folders,
+    followups,
     mail,
     ooo,
     rules,
@@ -20,6 +21,7 @@ from . import (
 _GROUP_MODULES = {
     "mail": mail,
     "folders": folders,
+    "followups": followups,
     "calendar": calendar,
     "contacts": contacts,
     "tasks": tasks,
