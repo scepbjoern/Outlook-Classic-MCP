@@ -1,6 +1,6 @@
 # Local MCP tool configuration
 
-By default, the server exposes all 31 Outlook tools. To restrict which MCP
+By default, the server exposes all 32 Outlook tools. To restrict which MCP
 operations are advertised and callable, create a **local user-specific JSON**
 configuration file. No repository configuration is required.
 
@@ -82,11 +82,25 @@ discovery:
 ```
 
 Supported groups: `mail`, `folders`, `calendar`, `contacts`, `tasks`,
-`categories`, `rules`, `out_of_office`, `account`. Prefix the names in
+`followups`, `categories`, `rules`, `out_of_office`, `account`. Prefix the names in
 the [README Tools table](../README.md#tools) with `outlook_` when using them in a policy. The
 authoritative tool inventory is `src/outlook_mcp/config.py`. If you add a tool
 to the source code, add it to that inventory and update the registration tests;
 an unlisted tool decorator otherwise rejects registration.
+
+## Due query coverage
+
+The `followups` group registers one read-only tool, `outlook_query_due`. For a minimal discovery and due-query policy use `tools.enabled_tools = ["outlook_whoami", "outlook_query_due"]` and grant the intended accounts read access. An explicit denial of the `mail` or `tasks` group disables this combined tool too. Individual tool denials continue to apply to the named operations.
+
+Each call selects one delivery store. The server opens its To-Do and default Tasks folders, verifies the folder and each candidate's parent StoreID, and deduplicates by EntryID within that store. The To-Do view supplies the provider's indexed tasks and flagged mail. Local provider views determine coverage. An unavailable To-Do folder can leave only the default Tasks folder readable. Each source reports its own status. Separate archives, other stores and provider-specific custom fields are outside this search. [Store.GetDefaultFolder](https://learn.microsoft.com/en-us/office/vba/api/outlook.store.getdefaultfolder) · [Outlook folder types](https://learn.microsoft.com/en-us/office/vba/api/outlook.oldefaultfolders)
+
+| Outlook class | Evidence used for an outstanding due item |
+| --- | --- |
+| `MailItem` | `IsMarkedAsTask` is true, native `PidTagFlagStatus` is 2 (active), `TaskCompletedDate` is empty, and `TaskDueDate` supplies a date. [Follow-up properties](https://learn.microsoft.com/en-us/office/vba/outlook/concepts/electronic-business-cards/setting-items-for-follow-up) · [Flag states](https://learn.microsoft.com/en-us/office/client-developer/outlook/mapi/pidtagflagstatus-canonical-property) |
+| `TaskItem` | `Complete` is false and `DueDate` supplies a date. [TaskItem.Complete](https://learn.microsoft.com/en-us/office/vba/api/outlook.taskitem.complete) · [TaskItem.DueDate](https://learn.microsoft.com/en-us/office/vba/api/outlook.taskitem.duedate) |
+| `AppointmentItem` | Classic Outlook exposes scheduling and reminder fields but no standard task due date. Calendar coverage is always reported as unsupported. The query skips appointments before accessing any titles, identifiers, times or sensitivity, under every calendar privacy setting. [AppointmentItem members](https://learn.microsoft.com/en-us/office/vba/api/outlook.appointmentitem) |
+
+The tool compares the local date fields supplied by Outlook. Null and Outlook's empty date (4501-01-01) count as undated. Completed and undated items are omitted. Unreadable due or completion fields make the source partial. Returned mail and task subjects are null for private or unknown sensitivity. The query reads no message bodies. [Outlook flag date defaults](https://learn.microsoft.com/en-us/office/vba/api/outlook.olmarkinterval) · [Agent usage and pagination](../skills/outlook/references/tools.md#outlook_query_due)
 
 ## Account selection and migration
 

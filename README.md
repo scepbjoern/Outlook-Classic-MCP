@@ -82,7 +82,7 @@ server entry in its MCP config:
 
 ## Tools
 
-31 tools across 9 categories, all prefixed `outlook_*`.
+32 tools across 10 categories, all prefixed `outlook_*`.
 
 | Category       | Tools |
 | -------------- | ----- |
@@ -91,6 +91,7 @@ server entry in its MCP config:
 | Calendar       | `list_events`, `get_event`, `create_event`, `update_event`, `delete_event`, `respond_event` |
 | Contacts       | `list_contacts`, `search_contacts` (saved contacts + org directory), `get_contact`, `resolve_name` |
 | Tasks          | `list_tasks`, `create_task`, `complete_task` |
+| Follow-ups     | `query_due` — outstanding flagged mail and tasks by local due date |
 | Categories     | `list_categories`, `set_category` |
 | Rules          | `list_rules`, `toggle_rule` |
 | Out-of-Office  | `get_out_of_office` |
@@ -147,7 +148,7 @@ to an individual occurrence or exception before editing any fields.
 
 ### Configure the available tools
 
-By default, all original 31 MCP tools are registered. A local, user-specific
+By default, all 32 MCP tools are registered. A local, user-specific
 JSON configuration can restrict whole groups and/or individual tools without
 removing other Outlook functionality. For example:
 
