@@ -1,7 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "tools": {
-    "disabled_tools": ["outlook_delete_mail"],
-    "disabled_groups": ["rules"]
+    "enabled_tools": ["outlook_whoami", "outlook_draft_mail"]
+  },
+  "accounts": {
+    "read": [],
+    "write": ["b@example.test"]
   }
 }

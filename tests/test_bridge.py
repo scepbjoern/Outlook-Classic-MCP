@@ -283,6 +283,7 @@ def test_reconnect_blocks_other_writes_and_refuses_changed_profile(bridge, monke
 
 
 @pytest.mark.parametrize("tool, args, action", [
+    ("draft_mail", {"subject": "Synthetic", "body": "Example", "to": ["guest@example.test"]}, "Save"),
     ("send_mail", {"subject": "Synthetic", "body": "Example", "to": ["guest@example.test"]}, "Send"),
     ("create_event", {"subject": "Synthetic", "start": "2026-11-23", "end": "2026-11-24"}, "Save"),
     ("create_event", {"subject": "Synthetic", "start": "2026-11-23", "end": "2026-11-24",
@@ -312,6 +313,8 @@ def test_registered_writes_are_never_replayed_after_lost_ack(monkeypatch, tool, 
             item.Save.assert_called_once_with()
         items.Add.assert_called_once()
         effect.assert_called_once_with()
+        if tool == "draft_mail":
+            item.Send.assert_not_called()
     finally:
         bridge.stop()
 

@@ -82,11 +82,11 @@ server entry in its MCP config:
 
 ## Tools
 
-35 tools across 11 categories, all prefixed `outlook_*`.
+36 tools across 11 categories, all prefixed `outlook_*`.
 
 | Category       | Tools |
 | -------------- | ----- |
-| Mail           | `list_mails`, `search_mails`, `get_mail`, `send_mail`, `reply_mail`, `forward_mail`, `move_mail`, `delete_mail`, `mark_mail`, `save_attachments` |
+| Mail           | `list_mails`, `search_mails`, `get_mail`, `draft_mail`, `send_mail`, `reply_mail`, `forward_mail`, `move_mail`, `delete_mail`, `mark_mail`, `save_attachments` |
 | Folders        | `list_folders`, `create_folder` |
 | Calendar       | `list_events`, `get_event`, `create_event`, `update_event`, `delete_event`, `respond_event` |
 | Contacts       | `list_contacts`, `search_contacts` (saved contacts + org directory), `get_contact`, `resolve_name` |
@@ -149,7 +149,7 @@ to an individual occurrence or exception before editing any fields.
 
 ### Configure the available tools
 
-By default, all 35 MCP tools are registered. A local, user-specific
+By default, all 36 MCP tools are registered. A local, user-specific
 JSON configuration can restrict whole groups and/or individual tools without
 removing other Outlook functionality. For example:
 
@@ -168,7 +168,9 @@ advertised by MCP `tools/list`. Multi-account profiles require a version 2 polic
 
 See the [configuration reference](docs/tool-configuration.md) for allowed
 groups/names, precedence, restrictive allowlists, startup errors and the
-[fictional example config](examples/config.example.json).
+[example policy for saving drafts with sending disabled](examples/config.example.json).
+For the one-time client confirmation and local save receipt, see
+[Drafts with sending disabled](docs/tool-configuration.md#drafts-with-sending-disabled).
 
 ---
 
