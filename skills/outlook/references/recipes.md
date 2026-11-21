@@ -56,14 +56,14 @@ Use `since` if the user wants only today: `since="<today>T00:00:00"`.
 5. Show the draft to the user and ask "send or save to drafts?".
 6. Either:
      a) outlook_reply_mail(store_id=store, entry_id=<id>, body=<draft>)         # sends
-     b) Recreate as a draft via outlook_send_mail(store_id=store,
+     b) Save a new draft via outlook_draft_mail(store_id=store,
           to=[verified sender SMTP address], subject="Re: <subject>",
-          body=<draft>, save_only=true)                         # stages
+          body=<draft>)
 ```
 
 Why step 3: list/search results carry only a 200-character preview. Replying off the preview produces vague, generic responses.
 
-Why "send or save": `reply_mail` sends immediately. There is no `save_only` flag on `reply_mail`. If the user wants to review before sending, you must build it as a draft via `send_mail(save_only=true)`.
+Offer only actions advertised by the current connection. With the draft-only policy, show the complete proposed message and ask to save it in the selected account's Drafts folder.
 
 ## 3. Reply-all with an attachment
 

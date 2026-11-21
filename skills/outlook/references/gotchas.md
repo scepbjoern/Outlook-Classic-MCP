@@ -48,13 +48,13 @@ Update and delete call Outlook's native Save and Delete on the selected appointm
 
 `outlook_reply_mail` doesn't have a `save_only` flag. It sends.
 
-**Workaround**: build the reply yourself and save it via `outlook_send_mail(save_only=true)`:
+Build a new message from the verified sender and original subject, preview it and confirm the draft save.
 
 ```
 to = [verified sender SMTP address]                        # or all of original.to/cc for reply-all
 subject = "Re: " + original.subject                 # don't double-prefix
 body = your_reply + "\n\n" + original.body          # quote manually
-outlook_send_mail(store_id=store, to=to, subject=subject, body=body, save_only=true)
+outlook_draft_mail(store_id=store, to=to, subject=subject, body=body)
 ```
 
 Tell the user the draft is in the Drafts folder for them to review.

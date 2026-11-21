@@ -33,7 +33,7 @@ remain unverified. After an uncertain outcome, inspect the selected store before
 new write. Never automatically repeat a send, invitation or create.
 
 Tool categories (all prefixed `outlook_`):
-  - Mail: list, search, get, send, reply, forward, move, delete, mark, save_attachments
+  - Mail: list, search, get, draft, send, reply, forward, move, delete, mark, save_attachments
   - Folders: list_folders, create_folder
   - Calendar: list_events, get_event, create_event, update_event, delete_event, respond_event
   - Contacts: list_contacts, search_contacts (incl. org directory/GAL),
@@ -50,6 +50,8 @@ Calendar availability-only rows have no item identifiers.
 For recurring appointments copy scope and original_start from the selected row.
 For an entire series explicitly select scope=series and omit original_start.
 Preview the exact scope, affected meeting and proposed changes for user approval before a write.
+For new mail drafts, preview the account, recipients, subject, body and options.
+After one-time approval, call outlook_draft_mail once to save in that account's Drafts.
 
 All datetimes are in the USER'S LOCAL timezone with an explicit UTC
 offset (e.g. 2026-06-10T16:33:22+05:00). Present them as-is — do NOT

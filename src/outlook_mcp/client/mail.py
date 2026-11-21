@@ -277,8 +277,7 @@ def _send_from(mailbox: Mailbox, message: Any) -> None:
     message.Send()
 
 
-def send_mail(
-    namespace: Any,
+def _compose_mail(
     mailbox: Mailbox,
     *,
     to: list[str],
@@ -289,9 +288,8 @@ def send_mail(
     html: bool = False,
     attachments: list[str] | None = None,
     importance: str = "normal",
-    save_only: bool = False,
     signature: bool = False,
-) -> dict[str, Any]:
+) -> tuple[Any, Any]:
     mailbox.require_smtp_recipients(to + (cc or []) + (bcc or []))
     drafts = mailbox.default_folder(OL_FOLDER_DRAFTS)
     mail = drafts.Items.Add(OL_MAIL_ITEM)
@@ -333,6 +331,57 @@ def send_mail(
     for raw_path in attachments or []:
         mail.Attachments.Add(validate_attachment_path(raw_path))
 
+    return mail, inspector
+
+
+def _save_draft(mailbox: Mailbox, mail: Any, inspector: Any) -> dict[str, Any]:
+    try:
+        mail.Save()
+    except Exception as exc:
+        raise WriteOutcomeUnknown("The local draft save could not be confirmed. Check Drafts.") from exc
+    try:
+        try:
+            entry_id = mail.EntryID
+            subject = mail.Subject
+        finally:
+            if inspector is not None:
+                inspector.Close(OL_INSPECTOR_SAVE)
+    except Exception as exc:
+        raise WriteOutcomeUnknown("Outlook saved a draft locally before a later step failed. Check Drafts.") from exc
+    return {
+        "status": "saved_to_drafts", "local_outcome": "saved",
+        "entry_id": entry_id, "store_id": mailbox.store_id, "subject": subject,
+    }
+
+
+def draft_mail(namespace: Any, mailbox: Mailbox, **fields: Any) -> dict[str, Any]:
+    """Save a new message in the selected store's Drafts folder."""
+    mail, inspector = _compose_mail(mailbox, **fields)
+    return _save_draft(mailbox, mail, inspector)
+
+
+def send_mail(
+    namespace: Any,
+    mailbox: Mailbox,
+    *,
+    to: list[str],
+    subject: str,
+    body: str,
+    cc: list[str] | None = None,
+    bcc: list[str] | None = None,
+    html: bool = False,
+    attachments: list[str] | None = None,
+    importance: str = "normal",
+    save_only: bool = False,
+    signature: bool = False,
+) -> dict[str, Any]:
+    mail, inspector = _compose_mail(
+        mailbox, to=to, subject=subject, body=body, cc=cc, bcc=bcc, html=html,
+        attachments=attachments, importance=importance, signature=signature,
+    )
+    if save_only:
+        return _save_draft(mailbox, mail, inspector)
+
     saved = False
     try:
         if inspector is not None:
@@ -345,16 +394,6 @@ def send_mail(
             inspector.Close(OL_INSPECTOR_SAVE)
             inspector = None
             mail = get_item_by_id(namespace, mailbox, entry_id, OL_CLASS_MAIL)
-
-        if save_only:
-            mail.Save()
-            saved = True
-            return {
-                "status": "saved_to_drafts", "local_outcome": "saved",
-                "entry_id": mail.EntryID,
-                "store_id": mailbox.store_id,
-                "subject": mail.Subject,
-            }
 
         _send_from(mailbox, mail)
     except Exception as exc:

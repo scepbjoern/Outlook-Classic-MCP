@@ -14,7 +14,7 @@ subject per operation. Keep identifiers, profile names, mail and logs local.
    stores. If a sign-in dialog appears, complete it manually.
 2. **Offline local save.** Put the synthetic Exchange account in Work Offline.
    Inspect its connection mode with `outlook_whoami`. Save one new draft with
-   `outlook_send_mail(save_only=true)` and the test StoreID. Check for exactly
+   `outlook_draft_mail` and the test StoreID after client confirmation. Check for exactly
    one matching local draft and record the saved/unverified receipt. Check
    the read-only store still rejects writes.
 3. **Independent Exchange evidence.** Return Outlook to online mode. Observe
