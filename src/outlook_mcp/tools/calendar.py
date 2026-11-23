@@ -10,7 +10,7 @@ from pydantic import Field
 from outlook_mcp.client import calendar as cal_client
 from outlook_mcp.ui import ui_meta, ui_result
 from outlook_mcp.client.mailbox import Access
-from outlook_mcp.schemas import AccountSelector, EventScope, OriginalStart, EventSensitivity, Recurrence, StoreSelector
+from outlook_mcp.schemas import AccountSelector, EventBusyStatus, EventScope, OriginalStart, EventSensitivity, Recurrence, StoreSelector
 from outlook_mcp.utils.formatting import format_response
 from outlook_mcp.utils.safety import safe_item_call
 
@@ -111,6 +111,7 @@ def register(mcp, bridge) -> None:
         account: AccountSelector = None,
         store_id: StoreSelector = None,
         sensitivity: EventSensitivity = Field(default_factory=lambda: None),
+        busy_status: EventBusyStatus = Field(default_factory=lambda: None),
         categories: Annotated[list[str] | None, Field(
             description="Initial categories. Use exact names from outlook_list_categories in the selected store."
         )] = None,
@@ -130,6 +131,7 @@ def register(mcp, bridge) -> None:
             reminder_minutes=reminder_minutes,
             recurrence=recurrence,
             sensitivity=sensitivity,
+            busy_status=busy_status,
             categories=categories,
         )
         return format_response(data, "json")
@@ -157,6 +159,7 @@ def register(mcp, bridge) -> None:
         scope: EventScope = None,
         original_start: OriginalStart = None,
         sensitivity: EventSensitivity = Field(default_factory=lambda: None),
+        busy_status: EventBusyStatus = Field(default_factory=lambda: None),
         add_categories: Annotated[list[str] | None, Field(
             description="Add exact store category names, preserving existing assignments."
         )] = None,
@@ -181,6 +184,7 @@ def register(mcp, bridge) -> None:
             location=location,
             body=body,
             sensitivity=sensitivity,
+            busy_status=busy_status,
             add_categories=add_categories,
             remove_categories=remove_categories,
             replace_categories=replace_categories,

@@ -6,7 +6,7 @@ import datetime as dt
 import sys
 from typing import Any
 
-from outlook_mcp.client.calendar_privacy import availability, classify_event, event_time
+from outlook_mcp.client.calendar_privacy import availability, classify_event, event_time, native_busy_status
 from outlook_mcp.client.calendar_target import exception_count, require_event_store, select_event, selection_fields
 from outlook_mcp.client.categories import event_categories, require_category_scope
 from outlook_mcp.client.folders import _safe_get, get_item_by_id
@@ -46,6 +46,11 @@ def _validate_sensitivity(value: int | None) -> None:
         raise OutlookError("sensitivity must be an integer from 0 (Normal) to 3 (Confidential).")
 
 
+def _validate_busy_status(value: int | None) -> None:
+    if value is not None and (type(value) is not int or not 0 <= value <= 4):
+        raise OutlookError("busy_status must be an integer from 0 (Free) to 4 (Working elsewhere).")
+
+
 def _updated_time(field: str, value: str) -> tuple[str, dt.datetime]:
     """An offset identifies an instant even when the local hour occurs twice."""
     try:
@@ -66,6 +71,7 @@ def _event_summary(ev: Any, sensitivity: int | None) -> dict[str, Any]:
         "end": event_time(ev, "End"),
         "location": _safe_get(ev, "Location", ""),
         "organizer": _safe_get(ev, "Organizer", ""),
+        "busy_status": native_busy_status(ev),
         "sensitivity": sensitivity,
         "sensitivity_label": _SENSITIVITY_LABELS.get(sensitivity, "Unknown"),
         "is_recurring": bool(recur_state),
@@ -222,9 +228,11 @@ def create_event(
     reminder_minutes: int | None = 15,
     recurrence: Recurrence | None = None,
     sensitivity: int | None = None,
+    busy_status: int | None = None,
     categories: list[str] | None = None,
 ) -> dict[str, Any]:
     _validate_sensitivity(sensitivity)
+    _validate_busy_status(busy_status)
     mailbox.require_smtp_recipients(attendees or [])
     start_time = to_com(from_iso(start))
     end_time = to_com(from_iso(end))
@@ -258,6 +266,9 @@ def create_event(
         _apply_recurrence(appt, recurrence)
     if sensitivity is not None:
         appt.Sensitivity = sensitivity
+    if busy_status is None:
+        busy_status = 0 if categories and "P.AL" in categories else 2
+    appt.BusyStatus = busy_status
     appt.Save()
     try:
         result = {"status": "created", "local_outcome": "saved"}
@@ -292,11 +303,13 @@ def update_event(
     location: str | None = None,
     body: str | None = None,
     sensitivity: int | None = None,
+    busy_status: int | None = None,
     add_categories: list[str] | None = None,
     remove_categories: list[str] | None = None,
     replace_categories: list[str] | None = None,
 ) -> dict[str, Any]:
     _validate_sensitivity(sensitivity)
+    _validate_busy_status(busy_status)
     ev = _target(namespace, mailbox, entry_id, scope, original_start)
     if any(names is not None for names in (add_categories, remove_categories, replace_categories)):
         require_category_scope(scope)
@@ -323,6 +336,8 @@ def update_event(
         ev.Body = body
     if sensitivity is not None:
         ev.Sensitivity = sensitivity
+    if busy_status is not None:
+        ev.BusyStatus = busy_status
     ev.Save()
     if classify_event(ev, mailbox.privacy, requested=sensitivity).mode != PrivacyMode.FULL:
         return {"status": "updated"}

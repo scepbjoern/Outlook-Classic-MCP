@@ -14,6 +14,12 @@ AccountSelector = Annotated[str | None, Field(
 StoreSelector = Annotated[str | None, Field(
     description="Outlook StoreID from outlook_whoami or an item result. Must agree with account if both are supplied.",
 )]
+EventBusyStatus = Annotated[int, Field(
+    strict=True, ge=0, le=4,
+    description="Native Outlook availability (0=Free, 1=Tentative, 2=Busy, 3=Out of office, "
+                "4=Working elsewhere). On create, omission selects Free with category P.AL or Busy otherwise. "
+                "On update, omission preserves the stored value.",
+)]
 EventSensitivity = Annotated[int, Field(
     strict=True, ge=0, le=3,
     description="Native Outlook sensitivity (0=Normal, 1=Personal, 2=Private, 3=Confidential). "

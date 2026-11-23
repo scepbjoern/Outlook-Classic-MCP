@@ -105,6 +105,12 @@ def _to_markdown(data: Any) -> str:
     return "```json\n" + json.dumps(data, indent=2, default=str) + "\n```"
 
 
+def _format_busy_status(event: dict[str, Any]) -> str:
+    value = event["busy_status"]
+    labels = ("Free", "Tentative", "Busy", "Out of office", "Working elsewhere")
+    return "Unknown" if value is None else f"{labels[value]} ({value})"
+
+
 def _format_sensitivity(event: dict[str, Any]) -> str:
     value = event["sensitivity"]
     label = event["sensitivity_label"]
@@ -156,7 +162,7 @@ def _render_collection(data: dict[str, Any]) -> str:
             if "sensitivity" in ev:
                 lines.append(f"  - sensitivity: {_format_sensitivity(ev)}")
             if "busy_status" in ev:
-                lines.append(f"  - busy status: {ev['busy_status']}")
+                lines.append(f"  - busy status: {_format_busy_status(ev)}")
             if ev.get("entry_id"):
                 lines.append(f"  - id: `{ev['entry_id']}`")
                 if ev.get("scope"):
@@ -213,6 +219,9 @@ def _render_collection(data: dict[str, Any]) -> str:
 
 def _render_detail(data: dict[str, Any]) -> str:
     lines: list[str] = []
+    if "busy_status" in data and "body" not in data:
+        return (f"# {data['subject']}\n**When:** {data['start']} -> {data['end']}\n"
+                f"**Availability:** {_format_busy_status(data)}")
     if "subject" in data and ("body" in data or "html_body" in data):
         lines.append(f"# {data.get('subject', '(no subject)')}")
         if data.get("store_id"):
@@ -229,6 +238,8 @@ def _render_detail(data: dict[str, Any]) -> str:
             lines.append(f"**When:** {data['start']} -> {data.get('end')}")
         if data.get("scope"):
             lines.append(_calendar_selection(data))
+        if "busy_status" in data:
+            lines.append(f"**Availability:** {_format_busy_status(data)}")
         if "sensitivity" in data:
             lines.append(f"**Sensitivity:** {_format_sensitivity(data)}")
         if data.get("location"):

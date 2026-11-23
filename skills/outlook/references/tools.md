@@ -225,6 +225,8 @@ List calendar events in a date range, including expanded recurring instances.
 
 **Returns**: `{ start, end, count, store_id, items: [...] }`. Items include `entry_id, store_id, subject, start, end, location, organizer, is_recurring, all_day, preview` (200-char body excerpt), plus `sensitivity` and `sensitivity_label` from the listed appointment or occurrence.
 
+Every permitted list and detail row includes the selected item's stored `busy_status`. The values are 0 Free, 1 Tentative, 2 Busy, 3 Out of office and 4 Working elsewhere. A missing, unreadable or invalid native value is JSON `null` (unknown). An occurrence or exception can differ from its master and neighbours.
+
 The native Outlook levels are Normal (0), Personal (1), Private (2) and Confidential (3).
 These fields describe full rows. By default a Private or unclassified row contains only `subject: "Appointment"`, `start`, `end` and `busy_status`. Under `exclude`, it is omitted. With `full`, confirmed Private appointments can include identifying fields. A custom color category named “Privat” is independent of the native marker.
 
@@ -263,6 +265,7 @@ Create a calendar event or meeting invite. **Adding any attendee turns this into
 | `reminder_minutes`  | int 0–10080    | `15`    | Minutes before start. |
 | `recurrence`        | Recurrence obj | `null`  | Use the recurrence schema advertised by this connection. |
 | `sensitivity`       | int 0–3        | omitted | Set the native Outlook level. Omit to use Outlook's default. |
+| `busy_status`       | int 0–4        | omitted | Free with any exact category `P.AL`, Busy otherwise. An explicit value, including 0, overrides this default. |
 | `categories`        | list[str]      | omitted | Initial assignments. Supply exact category names from the selected store. |
 
 **Returns**: `{ status: "created", entry_id, store_id, subject, start, end }` for full disclosure.
@@ -285,6 +288,7 @@ Changing series start or end requires a verified empty exceptions collection.
 | `location` | string   | `null`  | |
 | `body`     | string   | `null`  | |
 | `sensitivity` | int 0–3 | omitted | Omit to preserve the current level. An explicit 0 sets Normal. |
+| `busy_status` | int 0–4 | omitted | Set availability on the selected item. Omit to preserve it across other edits. |
 | `add_categories` | list[str] | omitted | Append missing names. Repeating a name has no further effect. |
 | `remove_categories` | list[str] | omitted | Remove the named assignments, preserving other labels, including ones retired from the store list. |
 | `replace_categories` | list[str] | omitted | Set the complete list. An empty array clears all assignments. |
