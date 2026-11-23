@@ -156,12 +156,13 @@ function render() {
 function renderDetails(ev) {
   const d = detailCache.get(ev);
   if (!d) return '<div class="details"><div class="spinner"></div></div>';
-  if ("busy_status" in d) return '<div class="details">' + busyLabel(d.busy_status) + "</div>";
+  if ("busy_status" in d && !("body" in d)) return '<div class="details">' + busyLabel(d.busy_status) + "</div>";
   const atts = (d.attendees || []).map(a =>
     '<div class="att">' + avatarHtml(a.name, 20) + " " + esc(a.name || a.address || "") +
     '<span class="resp">' + esc(respLabel(a.response)) + "</span></div>").join("");
   const body = (d.body || "").trim();
   return '<div class="details fade-in">' +
+    ("busy_status" in d ? "<div>Availability: " + busyLabel(d.busy_status) + "</div>" : "") +
     (atts ? "<div><b>Attendees</b></div>" + atts : '<div class="muted">No attendee list.</div>') +
     (body ? '<div class="evbody">' + linkify(body.length > 700 ? body.slice(0, 700) + "…" : body) + "</div>" : "") +
   "</div>";

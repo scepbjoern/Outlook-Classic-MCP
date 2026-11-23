@@ -108,6 +108,12 @@ receive an error. Single appointments keep their previous call format.
 The client previews the selected account, scope, times, changes and meeting
 impact for approval. [Selection examples and Outlook smoke-test matrix](docs/calendar-recurrence.md)
 
+### Calendar availability
+
+Calendar list and detail responses include `busy_status` from the selected appointment, series master, occurrence or exception. Native values are Free (0), Tentative (1), Busy (2), Out of office (3) and Working elsewhere (4). Missing, unreadable or invalid values are JSON `null`. The calendar privacy policy still determines which rows and details are visible.
+
+Use the optional integer `busy_status` on create or update. Without it, create selects Free when the exact category `P.AL` is among the requested categories and Busy otherwise. An explicit value always wins, including 0. Updates preserve the stored value when the field is omitted. After upgrading, reconnect the client and inspect the published schemas. [Client setup](skills/outlook/references/setup.md)
+
 ### Calendar sensitivity
 
 `outlook_list_events` and `outlook_get_event` use the native Outlook

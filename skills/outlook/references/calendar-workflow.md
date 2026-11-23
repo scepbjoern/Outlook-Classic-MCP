@@ -31,6 +31,8 @@ A native Private appointment in A returns four fields, for example:
 
 Report the interval as busy. The list envelope still identifies the store and date range. There is no ID on this row for a detail lookup. A known Private item in B is omitted under `exclude` and a direct lookup looks missing. An empty list from B therefore cannot establish that the whole day is free. Respect the visible result and the requested limit.
 
+For capacity, compare the actual times and stored `busy_status` of the expanded rows. For example, a 10:15–10:45 Tentative appointment conflicts with the Busy interval above. A Free appointment over the same interval consumes no capacity. An Out of office appointment starting at 11:00 only touches the boundary. An overlapping row with `busy_status: null` leaves occupancy uncertain. Count overlapping occupied time once when estimating capacity.
+
 **What can reach the model?** Under `busy_only`, only Private (2) and unreadable/unknown sensitivity are reduced to availability. Standalone items with Normal (0), Personal (1) or Confidential (3) can include subject, organizer, location and a body preview. A category named “Private” has no effect on this decision. With `full`, known Private items can expose details, while unknown sensitivity stays availability-only. Under `exclude` both Private and unknown are hidden. A global `exclude` takes precedence over account overrides.
 
 “Summarize only free/busy” limits the final answer. If only availability may **leave the device**, a mixed-calendar list sent to a hosted model already exceeds that boundary. Use a verified local processing path that releases only permitted fields, or stop before the read. The server has no all-events availability projection. For a mail metadata request, `outlook_get_mail` with `include_body=false` and `include_html=false` omits the full body and HTML. The detail still contains identifying metadata and attachment names. Mail list and search tools can also return body previews. Check the schema and permitted payload first.
@@ -45,7 +47,7 @@ If categories are requested, the server must advertise `outlook_list_categories`
 
 For a separate write-enabled session the operator can add **only** `outlook_create_event` to the example's tool allowlist and grant `accounts.write` to `b@example.test` only. Leave the read list intact. Restart, reconnect, repeat discovery and check the account rights. A server operator's grant enables the tool. The person using the client still reviews the proposed action.
 
-> **Client:** Create “Focus block” in b@example.test's Calendar on 24 November 2026, 10:00–10:30 CET (UTC+01:00)? One appointment, native Private (2), 15-minute reminder, no attendees or invitations, no recurrence, category, location or notes.
+> **Client:** Create “Focus block” in b@example.test's Calendar on 24 November 2026, 10:00–10:30 CET (UTC+01:00)? One appointment, native Private (2), Busy (2), 15-minute reminder, no attendees or invitations, no recurrence, category, location or notes.
 >
 > **User:** Yes, create that appointment as shown.
 

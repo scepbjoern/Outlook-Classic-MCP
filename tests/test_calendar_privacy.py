@@ -68,7 +68,7 @@ def test_all_actions_and_explicit_downgrade(mode):
     ev = appointment(ns)
     call = registered(ns, privacy={"default": mode})
     by_id = {**SELECT, "entry_id": ev.EntryID}
-    created = call("create_event", subject=SECRET, body=SECRET, sensitivity=2,
+    created = call("create_event", subject=SECRET, body=SECRET, sensitivity=2, busy_status=0,
                    start=START.isoformat(), end=END.isoformat(), **SELECT)
     changed = call("update_event", location=SECRET, **by_id)
     category = call("set_category", categories=SECRET, **by_id)
@@ -199,7 +199,7 @@ def test_conflicting_saved_sensitivity_is_unreliable(mode, expected):
     ev = appointment(ns)
     ev.Save.side_effect = lambda: setattr(ev, "Sensitivity", 0)
     result = registered(ns, privacy={"default": mode})(
-        "create_event", subject=SECRET, sensitivity=2, start=START.isoformat(), end=END.isoformat(), **SELECT)
+        "create_event", subject=SECRET, sensitivity=2, busy_status=0, start=START.isoformat(), end=END.isoformat(), **SELECT)
     assert result == {**expected, "local_outcome": "saved", "exchange_sync": "unverified"}
 
 

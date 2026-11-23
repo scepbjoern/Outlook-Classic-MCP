@@ -77,11 +77,15 @@ def event_time(event: Any, field: str) -> str | None:
     return to_iso(local) if isinstance(local, dt.datetime) else None
 
 
-def availability(event: Any) -> dict[str, Any]:
+def native_busy_status(event: Any) -> int | None:
     busy = _safe_get(event, "BusyStatus")
+    return busy if type(busy) is int and 0 <= busy <= 4 else None
+
+
+def availability(event: Any) -> dict[str, Any]:
     return {
         "subject": "Appointment",
         "start": event_time(event, "Start"),
         "end": event_time(event, "End"),
-        "busy_status": busy if type(busy) is int and 0 <= busy <= 4 else None,
+        "busy_status": native_busy_status(event),
     }

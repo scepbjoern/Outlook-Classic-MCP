@@ -108,3 +108,30 @@ test("calendar refresh removes previously visible details and drill-down for pri
   assert.doesNotMatch(agenda.innerHTML, /Appointment|synthetic|data-index=/);
   assert.ok(app.sent.every(({message}) => message.method !== "tools/call"));
 });
+
+test("calendar shows stored availability and opens the returned detail shape", async () => {
+  const app = view("calendar");
+  await app.ready();
+  const agenda = app.element("agenda");
+  const row = {entry_id: "synthetic-id", store_id: "store", subject: "Event",
+               start: "2026-11-23T10:00:00", end: "2026-11-23T11:00:00"};
+  for (const [code, label] of [[0, "Free"], [1, "Tentative"], [2, "Busy"], [3, "Out of office"],
+                               [4, "Working elsewhere"], [null, "Availability unknown"]]) {
+    app.result({items: [{...row, busy_status: code}], count: 1});
+    assert.ok(agenda.innerHTML.includes(label));
+  }
+  async function openDetails(detail) {
+    app.result({items: [{...row, busy_status: 2}], count: 1});
+    const click = agenda.listeners.click({target: {closest: () => ({dataset: {index: "0"}})}});
+    const call = app.sent.at(-1).message;
+    assert.equal(call.params.name, "outlook_get_event");
+    app.deliver({id: call.id, result: {structuredContent: detail}});
+    await click;
+    return agenda.innerHTML;
+  }
+  const full = await openDetails({...row, busy_status: 4, attendees: [{name: "Guest"}], body: "Notes"});
+  for (const text of ["Working elsewhere", "Guest", "Notes"]) assert.ok(full.includes(text));
+  const reduced = await openDetails({subject: "Appointment", start: row.start, end: row.end, busy_status: 0});
+  assert.match(reduced, /Free/);
+  assert.doesNotMatch(reduced, /Notes|Guest|attendee list/);
+});

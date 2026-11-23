@@ -251,7 +251,7 @@ def test_private_create_is_absent_from_stdio_debug_log(tmp_path):
     assert "Starting outlook_mcp" in trace and secret not in trace
 
 
-def test_calendar_sensitivity_schema_and_validation_over_stdio(tmp_path):
+def test_calendar_status_schemas_and_validation_over_stdio(tmp_path):
     async def exercise():
         async with session_at(tmp_path) as session:
             schemas = {tool.name: tool.inputSchema for tool in (await session.list_tools()).tools}
@@ -260,11 +260,12 @@ def test_calendar_sensitivity_schema_and_validation_over_stdio(tmp_path):
                 ("outlook_update_event", {"entry_id": "event-b"}),
             ]:
                 schema = schemas[name]
-                field = schema["properties"]["sensitivity"]
-                assert "sensitivity" not in schema["required"]
-                assert (field["type"], field["minimum"], field["maximum"]) == ("integer", 0, 3)
-                result = await session.call_tool(name, {**args, "sensitivity": True})
-                assert result.isError and "sensitivity" in result.content[0].text
+                for key, maximum in (("sensitivity", 3), ("busy_status", 4)):
+                    field = schema["properties"][key]
+                    assert key not in schema["required"]
+                    assert (field["type"], field["minimum"], field["maximum"]) == ("integer", 0, maximum)
+                    result = await session.call_tool(name, {**args, key: True})
+                    assert result.isError and key in result.content[0].text
             assert (tmp_path / "bridge.log").read_text(encoding="utf-8").splitlines() == ["constructed"]
 
     asyncio.run(exercise())
