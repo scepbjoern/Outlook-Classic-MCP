@@ -28,7 +28,7 @@ from outlook_mcp.constants import (
 )
 from outlook_mcp.errors import ITEM_NOT_FOUND, OutlookError, WriteOutcomeUnknown
 from outlook_mcp.schemas import Recurrence
-from outlook_mcp.utils.formatting import from_iso, to_com, to_iso, truncate
+from outlook_mcp.utils.formatting import from_iso, to_com, truncate
 
 
 _RECURRENCE_TYPE_MAP = {
@@ -51,15 +51,39 @@ def _validate_busy_status(value: int | None) -> None:
         raise OutlookError("busy_status must be an integer from 0 (Free) to 4 (Working elsewhere).")
 
 
-def _updated_time(field: str, value: str) -> tuple[str, dt.datetime]:
-    """An offset identifies an instant even when the local hour occurs twice."""
+def _validate_all_day(value: bool | None) -> None:
+    if value is not None and type(value) is not bool:
+        raise OutlookError("all_day must be a boolean.")
+
+
+def _appointment_times(start: str | None, end: str | None, *, all_day: bool) -> dict[str, dt.datetime]:
+    """Plan the COM assignments before Outlook can normalize a boundary."""
+    times = {}
+    local = []
     try:
-        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
+        for field, value in (("Start", start), ("End", end)):
+            if value is None:
+                continue
+            parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+            wall = parsed.astimezone()
+            local.append(wall)
+            if all_day:
+                if wall.time() != dt.time():
+                    raise OutlookError("All-day boundaries must be dates or midnight in the local time zone.")
+                times[field] = to_com(wall)
+            elif parsed.tzinfo is not None:
+                # Preserve the instant even when the local hour occurs twice.
+                times[field + "UTC"] = parsed.astimezone(dt.timezone.utc)
+            else:
+                times[field] = to_com(parsed)
+    except (ValueError, OverflowError, OSError) as exc:
         raise OutlookError("Use an ISO-8601 timestamp for appointment times.") from exc
-    if parsed.tzinfo is not None:
-        return field + "UTC", parsed.astimezone(dt.timezone.utc)
-    return field, to_com(parsed)
+    if len(local) == 2:
+        if all_day and local[1].date() <= local[0].date():
+            raise OutlookError("The exclusive all-day end date must follow the start date.")
+        if local[1] < local[0]:
+            raise OutlookError("The appointment must end at or after its start.")
+    return times
 
 
 def _event_summary(ev: Any, sensitivity: int | None) -> dict[str, Any]:
@@ -81,6 +105,7 @@ def _event_summary(ev: Any, sensitivity: int | None) -> dict[str, Any]:
 
 
 def _event_full(ev: Any, sensitivity: int | None) -> dict[str, Any]:
+    reminder_set = _safe_get(ev, "ReminderSet")
     attendees = []
     if _safe_get(ev, "Recipients"):
         for r in ev.Recipients:
@@ -97,6 +122,7 @@ def _event_full(ev: Any, sensitivity: int | None) -> dict[str, Any]:
         "body": _safe_get(ev, "Body", ""),
         "attendees": attendees,
         "reminder_minutes": _safe_get(ev, "ReminderMinutesBeforeStart"),
+        "reminder_set": reminder_set if type(reminder_set) is bool else None,
         "categories": _safe_get(ev, "Categories", ""),
     }
 
@@ -230,30 +256,27 @@ def create_event(
     sensitivity: int | None = None,
     busy_status: int | None = None,
     categories: list[str] | None = None,
+    all_day: bool | None = None,
 ) -> dict[str, Any]:
+    _validate_all_day(all_day)
     _validate_sensitivity(sensitivity)
     _validate_busy_status(busy_status)
     mailbox.require_smtp_recipients(attendees or [])
-    start_time = to_com(from_iso(start))
-    end_time = to_com(from_iso(end))
+    times = _appointment_times(start, end, all_day=bool(all_day))
     assignment = event_categories(namespace, mailbox, replace=categories)
     appt = mailbox.default_folder(OL_FOLDER_CALENDAR).Items.Add(OL_APPOINTMENT_ITEM)
     mailbox.require_store(appt.Parent)
     if assignment is not None:
         appt.Categories = assignment
     appt.Subject = subject
-    # to_com, not the bare datetime: pywin32 would read a naive value
-    # as local and hand Outlook its UTC clock, shifting the event one
-    # offset early.
-    appt.Start = start_time
-    appt.End = end_time
+    if all_day is not None:
+        appt.AllDayEvent = all_day
+    for field, value in times.items():
+        setattr(appt, field, value)
     if location:
         appt.Location = location
     if body:
         appt.Body = body
-    if reminder_minutes is not None:
-        appt.ReminderSet = True
-        appt.ReminderMinutesBeforeStart = reminder_minutes
     if attendees:
         appt.MeetingStatus = OL_MEETING
         mailbox.bind_sender(appt)
@@ -264,6 +287,9 @@ def create_event(
             raise OutlookError("Outlook could not resolve all meeting attendees.")
     if recurrence is not None:
         _apply_recurrence(appt, recurrence)
+    appt.ReminderSet = reminder_minutes is not None
+    if reminder_minutes is not None:
+        appt.ReminderMinutesBeforeStart = reminder_minutes
     if sensitivity is not None:
         appt.Sensitivity = sensitivity
     if busy_status is None:
@@ -275,7 +301,7 @@ def create_event(
         mode = classify_event(appt, mailbox.privacy, requested=sensitivity).mode
         if mode == PrivacyMode.FULL:
             result.update(entry_id=appt.EntryID, store_id=mailbox.store_id, subject=appt.Subject,
-                          start=to_iso(appt.Start), end=to_iso(appt.End))
+                          start=event_time(appt, "Start"), end=event_time(appt, "End"))
         elif mode == PrivacyMode.BUSY_ONLY:
             result.update(availability(appt))
         if attendees:
@@ -307,28 +333,52 @@ def update_event(
     add_categories: list[str] | None = None,
     remove_categories: list[str] | None = None,
     replace_categories: list[str] | None = None,
+    all_day: bool | None = None,
 ) -> dict[str, Any]:
+    _validate_all_day(all_day)
     _validate_sensitivity(sensitivity)
     _validate_busy_status(busy_status)
     ev = _target(namespace, mailbox, entry_id, scope, original_start)
     if any(names is not None for names in (add_categories, remove_categories, replace_categories)):
         require_category_scope(scope)
-    times = [_updated_time(field, value) for field, value in (("Start", start), ("End", end))
-             if value is not None]
-    if scope == "series" and (start is not None or end is not None):
+    changing_times = start is not None or end is not None
+    current_all_day = False
+    if changing_times or all_day is not None:
+        current_all_day = _safe_get(ev, "AllDayEvent")
+        if type(current_all_day) is not bool:
+            raise OutlookError("Cannot verify the appointment's current AllDayEvent value.")
+    converting = all_day is not None and current_all_day != all_day
+    if scope == "series" and (changing_times or converting):
         try:
             count = exception_count(ev.GetRecurrencePattern().Exceptions)
         except Exception as exc:
             raise OutlookError("Cannot verify exceptions before changing series times.") from exc
         if count:
             raise OutlookError("Changing series times could discard exceptions. Select one occurrence.")
+    effective_all_day = current_all_day if all_day is None else all_day
+    if converting or (effective_all_day and changing_times):
+        # Toggling the flag or setting Start can change End in Outlook.
+        # Snapshot any omitted boundary before assigning either property.
+        if start is None:
+            start = event_time(ev, "Start")
+        if end is None:
+            end = event_time(ev, "End")
+        if start is None or end is None:
+            raise OutlookError("Cannot verify the appointment boundaries. Supply both start and end.")
+    times = _appointment_times(start, end, all_day=effective_all_day)
+    if converting and busy_status is None:
+        busy_status = native_busy_status(ev)
+        if busy_status is None:
+            raise OutlookError("Cannot preserve the appointment's availability. Supply busy_status.")
     assignment = event_categories(namespace, mailbox, event=ev, replace=replace_categories,
                                   add=add_categories, remove=remove_categories)
     if assignment is not None:
         ev.Categories = assignment
     if subject is not None:
         ev.Subject = subject
-    for field, value in times:
+    if converting:
+        ev.AllDayEvent = all_day
+    for field, value in times.items():
         setattr(ev, field, value)
     if location is not None:
         ev.Location = location

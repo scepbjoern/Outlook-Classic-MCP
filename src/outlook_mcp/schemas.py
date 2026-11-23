@@ -14,6 +14,11 @@ AccountSelector = Annotated[str | None, Field(
 StoreSelector = Annotated[str | None, Field(
     description="Outlook StoreID from outlook_whoami or an item result. Must agree with account if both are supplied.",
 )]
+EventAllDay = Annotated[bool, Field(
+    strict=True,
+    description="Native Outlook AllDayEvent. Use local dates or local midnight boundaries for all-day "
+                "appointments. End is exclusive. Omit for a timed create or to preserve the type on update.",
+)]
 EventBusyStatus = Annotated[int, Field(
     strict=True, ge=0, le=4,
     description="Native Outlook availability (0=Free, 1=Tentative, 2=Busy, 3=Out of office, "

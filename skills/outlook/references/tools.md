@@ -239,7 +239,7 @@ Full event detail, including attendees and their RSVP status.
 | `entry_id` | string | required | |
 | `response_format` | str | `markdown` | |
 
-**Returns**: summary fields + `body, attendees: [{name, address, type, response}], reminder_minutes, categories`.
+**Returns**: summary fields + `body, attendees: [{name, address, type, response}], reminder_set, reminder_minutes, categories`. The native `reminder_set` flag indicates whether the reminder is enabled. An unavailable flag is JSON `null`.
 
 For get, update, delete, respond and set-category, pass the listed `store_id` and `entry_id`.
 For operations supported on a recurring instance, also pass `scope="occurrence"`
@@ -258,11 +258,12 @@ Create a calendar event or meeting invite. **Adding any attendee turns this into
 | `subject`           | string         | required | |
 | `start`             | ISO-8601       | required | |
 | `end`               | ISO-8601       | required | |
+| `all_day`           | bool           | omitted | Create a native all-day appointment with `true`. Dates and timestamps resolving to midnight in the Windows local zone are accepted. End is exclusive. Omission or `false` creates a timed appointment. |
 | `location`          | string         | `null`  | |
 | `body`              | string         | `null`  | |
 | `attendees`         | list[str]      | `null`  | Email addresses. Adding any value here makes this a meeting and sends invites. |
 | `is_online_meeting` | bool           | `false` | Reserved. This server does not create an online meeting link. |
-| `reminder_minutes`  | int 0–10080    | `15`    | Minutes before start. |
+| `reminder_minutes`  | int 0–10080 or null | `15` | Minutes before start. Pass `null` to switch the reminder off. |
 | `recurrence`        | Recurrence obj | `null`  | Use the recurrence schema advertised by this connection. |
 | `sensitivity`       | int 0–3        | omitted | Set the native Outlook level. Omit to use Outlook's default. |
 | `busy_status`       | int 0–4        | omitted | Free with any exact category `P.AL`, Busy otherwise. An explicit value, including 0, overrides this default. |
@@ -277,7 +278,7 @@ Confirm attendee list, times, recurrence and any explicitly selected sensitivity
 ### `outlook_update_event`
 
 Update the supplied fields on the selected target. Edit cadence in Outlook.
-Changing series start or end requires a verified empty exceptions collection.
+Changing series start, end or all-day mode requires a verified empty exceptions collection.
 
 | Param      | Type     | Default | Notes |
 | ---------- | -------- | ------- | ----- |
@@ -285,6 +286,7 @@ Changing series start or end requires a verified empty exceptions collection.
 | `subject`  | string   | `null`  | |
 | `start`    | ISO-8601 | `null`  | |
 | `end`      | ISO-8601 | `null`  | |
+| `all_day`  | bool | omitted | Preserve the stored type when omitted. Set `true` or `false` to convert. Each omitted boundary on conversion retains its stored instant. When the result is all-day, both boundaries must be local midnight on different, increasing dates. |
 | `location` | string   | `null`  | |
 | `body`     | string   | `null`  | |
 | `sensitivity` | int 0–3 | omitted | Omit to preserve the current level. An explicit 0 sets Normal. |

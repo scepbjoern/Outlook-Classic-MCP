@@ -35,6 +35,8 @@ Consult only the user's designated local reference when aliases are relevant. Ke
 
 ## Changes and side effects
 
+For an all-day appointment, set `all_day=true` and use local dates. The end is the first date outside the appointment. For a one-day event, choose the next calendar date, including at clock changes. Omit `all_day` on unrelated updates. Preview both boundaries for a conversion. On create, use `reminder_minutes=null` to disable reminders. When verifying a saved event, check `all_day` and `reminder_set` in its full JSON detail.
+
 Before an event write, show the account/calendar, item and scope, times with time zone, proposed fields (including sensitivity name and number if specified), categories, reminder, and who receives an invitation or response. For a personal one-time appointment omit attendees and recurrence. Wait for one-time approval of the exact action in the client or an explicit reply to the preview. A change needs a revised preview. Refusal or silence ends the proposal. Submit once and report the returned status. If the outcome is uncertain, inspect the selected calendar before considering another write.
 
 For a new mail draft use `outlook_draft_mail`. Show the selected account, To/Cc/Bcc, subject, body, attachments and options. Ask to save this exact draft once. On refusal or silence, stop. After edits, get approval for the revised preview. Submit once and report the local receipt. If the outcome is uncertain, check that account's Drafts in Outlook before retrying. [Draft-only configuration](../../docs/tool-configuration.md#drafts-with-sending-disabled)

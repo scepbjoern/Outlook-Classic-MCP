@@ -10,7 +10,7 @@ from pydantic import Field
 from outlook_mcp.client import calendar as cal_client
 from outlook_mcp.ui import ui_meta, ui_result
 from outlook_mcp.client.mailbox import Access
-from outlook_mcp.schemas import AccountSelector, EventBusyStatus, EventScope, OriginalStart, EventSensitivity, Recurrence, StoreSelector
+from outlook_mcp.schemas import AccountSelector, EventAllDay, EventBusyStatus, EventScope, OriginalStart, EventSensitivity, Recurrence, StoreSelector
 from outlook_mcp.utils.formatting import format_response
 from outlook_mcp.utils.safety import safe_item_call
 
@@ -103,7 +103,7 @@ def register(mcp, bridge) -> None:
             Field(description="Email addresses. Adding any attendee turns this into a meeting."),
         ] = None,
         is_online_meeting: Annotated[bool, Field()] = False,
-        reminder_minutes: Annotated[Optional[int], Field(ge=0, le=10080)] = 15,
+        reminder_minutes: Annotated[Optional[int], Field(ge=0, le=10080, description="Minutes before start. Null disables the reminder.")] = 15,
         recurrence: Annotated[
             Optional[Recurrence],
             Field(description="Recurrence pattern. Omit for a single occurrence."),
@@ -115,6 +115,7 @@ def register(mcp, bridge) -> None:
         categories: Annotated[list[str] | None, Field(
             description="Initial categories. Use exact names from outlook_list_categories in the selected store."
         )] = None,
+        all_day: EventAllDay = Field(default_factory=lambda: None),
     ) -> str:
         """Create a calendar event or meeting invite."""
         data = await bridge.call(
@@ -133,6 +134,7 @@ def register(mcp, bridge) -> None:
             sensitivity=sensitivity,
             busy_status=busy_status,
             categories=categories,
+            all_day=all_day,
         )
         return format_response(data, "json")
 
@@ -169,6 +171,7 @@ def register(mcp, bridge) -> None:
         replace_categories: Annotated[list[str] | None, Field(
             description="Replace all assignments with these exact store category names. Use [] to clear. Use alone."
         )] = None,
+        all_day: EventAllDay = Field(default_factory=lambda: None),
     ) -> str:
         """Update selected fields. Category edits require a standalone appointment or explicit series scope."""
         data = await bridge.call(
@@ -188,6 +191,7 @@ def register(mcp, bridge) -> None:
             add_categories=add_categories,
             remove_categories=remove_categories,
             replace_categories=replace_categories,
+            all_day=all_day,
         )
         return format_response(data, "json")
 

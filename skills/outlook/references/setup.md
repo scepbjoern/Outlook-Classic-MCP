@@ -52,6 +52,8 @@ approval_mode = "prompt"
 
 ### Discover tools before reading Outlook
 
+After upgrading for all-day support, inspect the published input schemas on a fresh connection. Both calendar write tools should advertise optional boolean `all_day`.
+
 Have the client initialize the STDIO connection and inspect its current tool list (MCP `tools/list`). This is a protocol operation. Use the names and schemas offered by that connection. An absent tool can reflect server policy or a client filter. A skill file, config entry or static MCP App view alone establishes no permissions. A successful listing establishes tool discovery only. Use the enabled `outlook_whoami` tool to check local readiness and the selected account's Exchange connection. A connected account or local save does not establish that a particular item has synchronized. See [readiness and write receipts](../../../docs/outlook-readiness.md) and the [optional Windows check](../../../docs/outlook-readiness-smoke.md).
 
 After a server upgrade or policy edit, end the old server process, reconnect and refresh the client's tool descriptions. For calendar availability, verify that the enabled create and update tools advertise optional integer `busy_status` with range 0–4 on the fresh connection. For a first read, follow the [calendar walkthrough](calendar-workflow.md). It includes a restrictive policy and the expected disclosures.
