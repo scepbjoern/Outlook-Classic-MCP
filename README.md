@@ -110,6 +110,8 @@ impact for approval. [Selection examples and Outlook smoke-test matrix](docs/cal
 
 ### Calendar availability
 
+Create a native all-day appointment with `all_day=true` and local dates. For example, in Europe/Zurich, `start="2026-03-29"` and `end="2026-03-30"` cover Sunday alone, including its clock change. The end is exclusive. Omit the flag on update to keep the appointment's type. [Calendar tool reference](skills/outlook/references/tools.md#outlook_create_event)
+
 Calendar list and detail responses include `busy_status` from the selected appointment, series master, occurrence or exception. Native values are Free (0), Tentative (1), Busy (2), Out of office (3) and Working elsewhere (4). Missing, unreadable or invalid values are JSON `null`. The calendar privacy policy still determines which rows and details are visible.
 
 Use the optional integer `busy_status` on create or update. Without it, create selects Free when the exact category `P.AL` is among the requested categories and Busy otherwise. An explicit value always wins, including 0. Updates preserve the stored value when the field is omitted. After upgrading, reconnect the client and inspect the published schemas. [Client setup](skills/outlook/references/setup.md)

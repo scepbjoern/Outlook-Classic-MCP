@@ -260,6 +260,11 @@ def test_calendar_status_schemas_and_validation_over_stdio(tmp_path):
                 ("outlook_update_event", {"entry_id": "event-b"}),
             ]:
                 schema = schemas[name]
+                assert "all_day" not in schema["required"]
+                assert schema["properties"]["all_day"]["type"] == "boolean"
+                for invalid in (None, 1, "true"):
+                    result = await session.call_tool(name, {**args, "all_day": invalid})
+                    assert result.isError and "all_day" in result.content[0].text
                 for key, maximum in (("sensitivity", 3), ("busy_status", 4)):
                     field = schema["properties"][key]
                     assert key not in schema["required"]
